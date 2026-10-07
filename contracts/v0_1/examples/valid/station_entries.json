@@ -1,0 +1,19 @@
+{
+ "schema_version": "0.1",
+ "kind": "station_entries",
+ "run_id": "example-run-001",
+ "generated_at": "2026-09-30T09:00:00Z",
+ "data_mode": "synthetic",
+ "manifest": {
+  "source": "synthetic example",
+  "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ "payload": [
+  {
+   "station_id": "avtovo",
+   "interval_start": "2026-09-30T09:00:00Z",
+   "day_type": "weekday",
+   "entries": 123.0
+  }
+ ]
+}

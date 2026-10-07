@@ -1,0 +1,591 @@
+{
+ "version": "0.1",
+ "stations": [
+  {
+   "id": "veteranov",
+   "name_ru": "Проспект Ветеранов",
+   "order": 0,
+   "vestibules": [
+    "Пр.Ветеранов-1",
+    "Пр.Ветеранов-2"
+   ]
+  },
+  {
+   "id": "leninsky_prospekt",
+   "name_ru": "Ленинский проспект",
+   "order": 1,
+   "vestibules": [
+    "Ленинский пр.-1",
+    "Ленинский пр.-2"
+   ]
+  },
+  {
+   "id": "avtovo",
+   "name_ru": "Автово",
+   "order": 2,
+   "vestibules": [
+    "Автово"
+   ]
+  },
+  {
+   "id": "kirovsky_zavod",
+   "name_ru": "Кировский завод",
+   "order": 3,
+   "vestibules": [
+    "Кировский завод"
+   ]
+  },
+  {
+   "id": "narvskaya",
+   "name_ru": "Нарвская",
+   "order": 4,
+   "vestibules": [
+    "Нарвская"
+   ]
+  },
+  {
+   "id": "baltiyskaya",
+   "name_ru": "Балтийская",
+   "order": 5,
+   "vestibules": [
+    "Балтийская"
+   ]
+  },
+  {
+   "id": "tekhnologichesky_institut_1",
+   "name_ru": "Технологический институт-1",
+   "order": 6,
+   "vestibules": [
+    "Технологический институт-1"
+   ]
+  },
+  {
+   "id": "pushkinskaya",
+   "name_ru": "Пушкинская",
+   "order": 7,
+   "vestibules": [
+    "Пушкинская"
+   ]
+  },
+  {
+   "id": "vladimirskaya",
+   "name_ru": "Владимирская",
+   "order": 8,
+   "vestibules": [
+    "Владимирская"
+   ]
+  },
+  {
+   "id": "ploshchad_vosstaniya",
+   "name_ru": "Площадь Восстания",
+   "order": 9,
+   "vestibules": [
+    "Пл. Восстания-1",
+    "Пл. Восстания-2"
+   ]
+  },
+  {
+   "id": "chernyshevskaya",
+   "name_ru": "Чернышевская",
+   "order": 10,
+   "vestibules": [
+    "Чернышевская"
+   ]
+  },
+  {
+   "id": "ploshchad_lenina",
+   "name_ru": "Площадь Ленина",
+   "order": 11,
+   "vestibules": [
+    "Пл.Ленина-1",
+    "Пл.Ленина-2"
+   ]
+  },
+  {
+   "id": "vyborgskaya",
+   "name_ru": "Выборгская",
+   "order": 12,
+   "vestibules": [
+    "Выборгская"
+   ]
+  },
+  {
+   "id": "lesnaya",
+   "name_ru": "Лесная",
+   "order": 13,
+   "vestibules": [
+    "Лесная"
+   ]
+  },
+  {
+   "id": "ploshchad_muzhestva",
+   "name_ru": "Площадь Мужества",
+   "order": 14,
+   "vestibules": [
+    "Пл. Мужества"
+   ]
+  },
+  {
+   "id": "politekhnicheskaya",
+   "name_ru": "Политехническая",
+   "order": 15,
+   "vestibules": [
+    "Политехническая"
+   ]
+  },
+  {
+   "id": "akademicheskaya",
+   "name_ru": "Академическая",
+   "order": 16,
+   "vestibules": [
+    "Академическая"
+   ]
+  },
+  {
+   "id": "grazhdansky_prospekt",
+   "name_ru": "Гражданский проспект",
+   "order": 17,
+   "vestibules": [
+    "Гражданский пр."
+   ]
+  },
+  {
+   "id": "devyatkino",
+   "name_ru": "Девяткино",
+   "order": 18,
+   "vestibules": [
+    "Девяткино-2",
+    "Девяткино-1"
+   ]
+  }
+ ],
+ "segments": [
+  {
+   "id": "veteranov__leninsky_prospekt",
+   "from_station": "veteranov",
+   "to_station": "leninsky_prospekt",
+   "direction": "north",
+   "order": 0
+  },
+  {
+   "id": "leninsky_prospekt__veteranov",
+   "from_station": "leninsky_prospekt",
+   "to_station": "veteranov",
+   "direction": "south",
+   "order": 0
+  },
+  {
+   "id": "leninsky_prospekt__avtovo",
+   "from_station": "leninsky_prospekt",
+   "to_station": "avtovo",
+   "direction": "north",
+   "order": 1
+  },
+  {
+   "id": "avtovo__leninsky_prospekt",
+   "from_station": "avtovo",
+   "to_station": "leninsky_prospekt",
+   "direction": "south",
+   "order": 1
+  },
+  {
+   "id": "avtovo__kirovsky_zavod",
+   "from_station": "avtovo",
+   "to_station": "kirovsky_zavod",
+   "direction": "north",
+   "order": 2
+  },
+  {
+   "id": "kirovsky_zavod__avtovo",
+   "from_station": "kirovsky_zavod",
+   "to_station": "avtovo",
+   "direction": "south",
+   "order": 2
+  },
+  {
+   "id": "kirovsky_zavod__narvskaya",
+   "from_station": "kirovsky_zavod",
+   "to_station": "narvskaya",
+   "direction": "north",
+   "order": 3
+  },
+  {
+   "id": "narvskaya__kirovsky_zavod",
+   "from_station": "narvskaya",
+   "to_station": "kirovsky_zavod",
+   "direction": "south",
+   "order": 3
+  },
+  {
+   "id": "narvskaya__baltiyskaya",
+   "from_station": "narvskaya",
+   "to_station": "baltiyskaya",
+   "direction": "north",
+   "order": 4
+  },
+  {
+   "id": "baltiyskaya__narvskaya",
+   "from_station": "baltiyskaya",
+   "to_station": "narvskaya",
+   "direction": "south",
+   "order": 4
+  },
+  {
+   "id": "baltiyskaya__tekhnologichesky_institut_1",
+   "from_station": "baltiyskaya",
+   "to_station": "tekhnologichesky_institut_1",
+   "direction": "north",
+   "order": 5
+  },
+  {
+   "id": "tekhnologichesky_institut_1__baltiyskaya",
+   "from_station": "tekhnologichesky_institut_1",
+   "to_station": "baltiyskaya",
+   "direction": "south",
+   "order": 5
+  },
+  {
+   "id": "tekhnologichesky_institut_1__pushkinskaya",
+   "from_station": "tekhnologichesky_institut_1",
+   "to_station": "pushkinskaya",
+   "direction": "north",
+   "order": 6
+  },
+  {
+   "id": "pushkinskaya__tekhnologichesky_institut_1",
+   "from_station": "pushkinskaya",
+   "to_station": "tekhnologichesky_institut_1",
+   "direction": "south",
+   "order": 6
+  },
+  {
+   "id": "pushkinskaya__vladimirskaya",
+   "from_station": "pushkinskaya",
+   "to_station": "vladimirskaya",
+   "direction": "north",
+   "order": 7
+  },
+  {
+   "id": "vladimirskaya__pushkinskaya",
+   "from_station": "vladimirskaya",
+   "to_station": "pushkinskaya",
+   "direction": "south",
+   "order": 7
+  },
+  {
+   "id": "vladimirskaya__ploshchad_vosstaniya",
+   "from_station": "vladimirskaya",
+   "to_station": "ploshchad_vosstaniya",
+   "direction": "north",
+   "order": 8
+  },
+  {
+   "id": "ploshchad_vosstaniya__vladimirskaya",
+   "from_station": "ploshchad_vosstaniya",
+   "to_station": "vladimirskaya",
+   "direction": "south",
+   "order": 8
+  },
+  {
+   "id": "ploshchad_vosstaniya__chernyshevskaya",
+   "from_station": "ploshchad_vosstaniya",
+   "to_station": "chernyshevskaya",
+   "direction": "north",
+   "order": 9
+  },
+  {
+   "id": "chernyshevskaya__ploshchad_vosstaniya",
+   "from_station": "chernyshevskaya",
+   "to_station": "ploshchad_vosstaniya",
+   "direction": "south",
+   "order": 9
+  },
+  {
+   "id": "chernyshevskaya__ploshchad_lenina",
+   "from_station": "chernyshevskaya",
+   "to_station": "ploshchad_lenina",
+   "direction": "north",
+   "order": 10
+  },
+  {
+   "id": "ploshchad_lenina__chernyshevskaya",
+   "from_station": "ploshchad_lenina",
+   "to_station": "chernyshevskaya",
+   "direction": "south",
+   "order": 10
+  },
+  {
+   "id": "ploshchad_lenina__vyborgskaya",
+   "from_station": "ploshchad_lenina",
+   "to_station": "vyborgskaya",
+   "direction": "north",
+   "order": 11
+  },
+  {
+   "id": "vyborgskaya__ploshchad_lenina",
+   "from_station": "vyborgskaya",
+   "to_station": "ploshchad_lenina",
+   "direction": "south",
+   "order": 11
+  },
+  {
+   "id": "vyborgskaya__lesnaya",
+   "from_station": "vyborgskaya",
+   "to_station": "lesnaya",
+   "direction": "north",
+   "order": 12
+  },
+  {
+   "id": "lesnaya__vyborgskaya",
+   "from_station": "lesnaya",
+   "to_station": "vyborgskaya",
+   "direction": "south",
+   "order": 12
+  },
+  {
+   "id": "lesnaya__ploshchad_muzhestva",
+   "from_station": "lesnaya",
+   "to_station": "ploshchad_muzhestva",
+   "direction": "north",
+   "order": 13
+  },
+  {
+   "id": "ploshchad_muzhestva__lesnaya",
+   "from_station": "ploshchad_muzhestva",
+   "to_station": "lesnaya",
+   "direction": "south",
+   "order": 13
+  },
+  {
+   "id": "ploshchad_muzhestva__politekhnicheskaya",
+   "from_station": "ploshchad_muzhestva",
+   "to_station": "politekhnicheskaya",
+   "direction": "north",
+   "order": 14
+  },
+  {
+   "id": "politekhnicheskaya__ploshchad_muzhestva",
+   "from_station": "politekhnicheskaya",
+   "to_station": "ploshchad_muzhestva",
+   "direction": "south",
+   "order": 14
+  },
+  {
+   "id": "politekhnicheskaya__akademicheskaya",
+   "from_station": "politekhnicheskaya",
+   "to_station": "akademicheskaya",
+   "direction": "north",
+   "order": 15
+  },
+  {
+   "id": "akademicheskaya__politekhnicheskaya",
+   "from_station": "akademicheskaya",
+   "to_station": "politekhnicheskaya",
+   "direction": "south",
+   "order": 15
+  },
+  {
+   "id": "akademicheskaya__grazhdansky_prospekt",
+   "from_station": "akademicheskaya",
+   "to_station": "grazhdansky_prospekt",
+   "direction": "north",
+   "order": 16
+  },
+  {
+   "id": "grazhdansky_prospekt__akademicheskaya",
+   "from_station": "grazhdansky_prospekt",
+   "to_station": "akademicheskaya",
+   "direction": "south",
+   "order": 16
+  },
+  {
+   "id": "grazhdansky_prospekt__devyatkino",
+   "from_station": "grazhdansky_prospekt",
+   "to_station": "devyatkino",
+   "direction": "north",
+   "order": 17
+  },
+  {
+   "id": "devyatkino__grazhdansky_prospekt",
+   "from_station": "devyatkino",
+   "to_station": "grazhdansky_prospekt",
+   "direction": "south",
+   "order": 17
+  }
+ ],
+ "params": {
+  "train_capacity": {
+   "value": 1458,
+   "unit": "passengers",
+   "source": "organizers: 8-car train at 5 p/m2, stated maximum (data_notes §3)"
+  },
+  "cycle_min": {
+   "value": 99,
+   "unit": "min",
+   "source": "organizers: full round trip (data_notes §3)"
+  },
+  "reserve_trains": {
+   "value": 4,
+   "unit": "trains",
+   "source": "organizers: docs/data_notes.md §3 (rolling stock parameters)"
+  },
+  "reserve_depots": {
+   "value": {
+    "avtovo": 2,
+    "severnoye": 2
+   },
+   "unit": "trains",
+   "source": "organizers: depots TCh-1 Avtovo, TCh-4 Severnoye (data_notes §3)"
+  },
+  "reserve_entry_min": {
+   "value": [
+    15,
+    20
+   ],
+   "unit": "min",
+   "source": "organizers: time to enter the line, min-max (data_notes §3)"
+  },
+  "planned_pairs_weekday": {
+   "value": [
+    7,
+    20,
+    30,
+    32,
+    26,
+    22,
+    20,
+    18,
+    18,
+    20,
+    24,
+    28,
+    30,
+    30,
+    28,
+    20,
+    15,
+    14,
+    11,
+    7
+   ],
+   "unit": "pairs/hour",
+   "source": "organizers: photo of rolling schedule from 01.09, hours 05..24"
+  },
+  "planned_pairs_weekend": {
+   "value": [
+    7,
+    16,
+    19,
+    21,
+    20,
+    20,
+    20,
+    19,
+    19,
+    19,
+    20,
+    20,
+    20,
+    19,
+    18,
+    16,
+    15,
+    13,
+    11,
+    7
+   ],
+   "unit": "pairs/hour",
+   "source": "organizers: photo of rolling schedule from 01.09, hours 05..24"
+  },
+  "headway_min_max": {
+   "value": [
+    {
+     "period": "05:45-08:00",
+     "weekday": [
+      105,
+      480
+     ],
+     "saturday": [
+      150,
+      480
+     ],
+     "sunday": [
+      150,
+      480
+     ]
+    },
+    {
+     "period": "08:00-09:00",
+     "weekday": [
+      105,
+      210
+     ],
+     "saturday": [
+      150,
+      300
+     ],
+     "sunday": [
+      150,
+      300
+     ]
+    },
+    {
+     "period": "09:00-17:00",
+     "weekday": [
+      105,
+      330
+     ],
+     "saturday": [
+      165,
+      360
+     ],
+     "sunday": [
+      165,
+      360
+     ]
+    },
+    {
+     "period": "17:00-19:00",
+     "weekday": [
+      120,
+      240
+     ],
+     "saturday": [
+      165,
+      360
+     ],
+     "sunday": [
+      165,
+      360
+     ]
+    },
+    {
+     "period": "19:00-24:00",
+     "weekday": [
+      120,
+      540
+     ],
+     "saturday": [
+      165,
+      630
+     ],
+     "sunday": [
+      165,
+      630
+     ]
+    }
+   ],
+   "unit": "s",
+   "source": "organizers: headway min-max by departure period (data_notes §3)"
+  },
+  "turnback_stations": {
+   "value": [
+    "ploshchad_vosstaniya",
+    "ploshchad_lenina",
+    "avtovo"
+   ],
+   "unit": "station_id",
+   "source": "organizers: track map PDF (data_notes §3)"
+  }
+ }
+}

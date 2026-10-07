@@ -1,0 +1,40 @@
+{
+ "version": "0.1",
+ "items": {
+  "forecast_horizon_slots": {
+   "value": 8,
+   "unit": "slots",
+   "source": "D5 / ТЗ: 2 h horizon"
+  },
+  "slot_min": {
+   "value": 15,
+   "unit": "min",
+   "source": "ТЗ: 15-min intervals"
+  },
+  "r_on": {
+   "value": 1.0,
+   "unit": "ratio",
+   "source": "assumption: demand/capacity at which add_reserve triggers"
+  },
+  "r_on_consecutive": {
+   "value": 2,
+   "unit": "slots",
+   "source": "assumption"
+  },
+  "r_off": {
+   "value": 0.8,
+   "unit": "ratio",
+   "source": "assumption: ratio below which remove_train triggers"
+  },
+  "r_off_consecutive": {
+   "value": 3,
+   "unit": "slots",
+   "source": "assumption"
+  },
+  "control_horizon_min": {
+   "value": 30,
+   "unit": "min",
+   "source": "D5 / ТЗ"
+  }
+ }
+}

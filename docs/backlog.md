@@ -5,7 +5,7 @@ Status: `todo` / `doing` / `done`. A slice is done when its acceptance tests pas
 | ID | Status | Slice | Acceptance |
 |----|--------|-------|------------|
 | S0 | done | Harness + scaffold: uv project, CLI `doctor`, git, .gitignore, CLAUDE.md, hook, `/next-slice` | `pytest` green; `metro-control doctor` all ok |
-| S1 | todo | Contracts v0.1 + line reference `config/line.json` (19 stations, 36 directed segments, sourced params) + `metro-control validate` | Valid examples pass; invalid ones fail naming field and file; 152-row forecast check; q10≤q50≤q90; 12:00 MSK = 09:00 UTC; JSON Schemas exported |
+| S1 | done | Contracts v0.1 + line reference `config/line.json` (19 stations, 36 directed segments, sourced params) + `metro-control validate` | Valid examples pass; invalid ones fail naming field and file; 152-row forecast check; q10≤q50≤q90; 12:00 MSK = 09:00 UTC; JSON Schemas exported |
 | S2 | todo | Excel loader → `data/processed/station_entries.parquet` | 24 vestibules → 19 stations; 96 slots/day; day type parsed from sheet name; UTC; day totals match sheet totals |
 | S3 | todo | OD (gravity) + static assignment to segments | 3-station example A–B=100, B–C=90; rows sum to 1, diagonal 0; A→C never on C→A; 19-station peak ≤ pairs×1458 sanity report |
 | S4 | todo | Dispatcher screen on mock data | Line schematic coloured ≤80/80–100/>100; station chart fact/forecast/q-band; action card; missing/bad package shows reason, no traceback |

@@ -1,0 +1,188 @@
+{
+ "$defs": {
+  "Manifest": {
+   "additionalProperties": false,
+   "properties": {
+    "checksum": {
+     "title": "Checksum",
+     "type": "string"
+    },
+    "source": {
+     "title": "Source",
+     "type": "string"
+    }
+   },
+   "required": [
+    "source",
+    "checksum"
+   ],
+   "title": "Manifest",
+   "type": "object"
+  },
+  "QueueState": {
+   "additionalProperties": false,
+   "properties": {
+    "direction": {
+     "enum": [
+      "north",
+      "south"
+     ],
+     "title": "Direction",
+     "type": "string"
+    },
+    "station_id": {
+     "title": "Station Id",
+     "type": "string"
+    },
+    "waiting": {
+     "minimum": 0,
+     "title": "Waiting",
+     "type": "number"
+    }
+   },
+   "required": [
+    "station_id",
+    "direction",
+    "waiting"
+   ],
+   "title": "QueueState",
+   "type": "object"
+  },
+  "SimulationPayload": {
+   "additionalProperties": false,
+   "properties": {
+    "capacity_per_train": {
+     "default": 1458,
+     "exclusiveMinimum": 0,
+     "title": "Capacity Per Train",
+     "type": "number"
+    },
+    "queues": {
+     "items": {
+      "$ref": "#/$defs/QueueState"
+     },
+     "title": "Queues",
+     "type": "array"
+    },
+    "reserve_available": {
+     "maximum": 4,
+     "minimum": 0,
+     "title": "Reserve Available",
+     "type": "integer"
+    },
+    "t": {
+     "format": "date-time",
+     "title": "T",
+     "type": "string"
+    },
+    "trains": {
+     "items": {
+      "$ref": "#/$defs/TrainState"
+     },
+     "title": "Trains",
+     "type": "array"
+    }
+   },
+   "required": [
+    "t",
+    "trains",
+    "queues",
+    "reserve_available"
+   ],
+   "title": "SimulationPayload",
+   "type": "object"
+  },
+  "TrainState": {
+   "additionalProperties": false,
+   "properties": {
+    "load": {
+     "minimum": 0,
+     "title": "Load",
+     "type": "number"
+    },
+    "segment_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Segment Id"
+    },
+    "station_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Station Id"
+    },
+    "train_id": {
+     "title": "Train Id",
+     "type": "string"
+    }
+   },
+   "required": [
+    "train_id",
+    "load"
+   ],
+   "title": "TrainState",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "properties": {
+  "data_mode": {
+   "enum": [
+    "real",
+    "mock",
+    "synthetic"
+   ],
+   "title": "Data Mode",
+   "type": "string"
+  },
+  "generated_at": {
+   "format": "date-time",
+   "title": "Generated At",
+   "type": "string"
+  },
+  "kind": {
+   "const": "simulation_state",
+   "title": "Kind",
+   "type": "string"
+  },
+  "manifest": {
+   "$ref": "#/$defs/Manifest"
+  },
+  "payload": {
+   "$ref": "#/$defs/SimulationPayload"
+  },
+  "run_id": {
+   "title": "Run Id",
+   "type": "string"
+  },
+  "schema_version": {
+   "const": "0.1",
+   "title": "Schema Version",
+   "type": "string"
+  }
+ },
+ "required": [
+  "schema_version",
+  "run_id",
+  "generated_at",
+  "data_mode",
+  "manifest",
+  "kind",
+  "payload"
+ ],
+ "title": "SimulationState",
+ "type": "object"
+}
