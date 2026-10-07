@@ -22,6 +22,8 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - No knowledge of the future: a decision at time T may read only data available at T. Demand (truth) is separate from forecast.
 - Organizer data stays in `data/raw/` (git-ignored). Commit only code, contracts, configs and small synthetic fixtures.
 - Commit locally after green checks and the user's OK; never push without being asked.
+- The orchestrator keeps `docs/plan.md` and `docs/backlog.md` current: small corrections itself (reported under "plan changes"),
+  scope changes only after asking the user; every change gets a line in `docs/decisions.md`.
 
 ## Git flow
 - `master` = releases only (demo-ready states); merged from `dev` only when the user asks. `dev` = integration branch, always green.
