@@ -81,6 +81,18 @@
    },
    "unit": "ratio",
    "source": "assumption, uncalibrated: transfer passengers are not in turnstile counts; multiplies origin entries and attraction"
+  },
+  "mock_demo_surge": {
+   "value": {
+    "pushkinskaya": 4,
+    "vladimirskaya": 4,
+    "ploshchad_vosstaniya": 4,
+    "chernyshevskaya": 4,
+    "tekhnologichesky_institut_1": 2.5,
+    "ploshchad_lenina": 2.5
+   },
+   "unit": "ratio per station",
+   "source": "mock, demo only: multiplies mock q50 entries so the demo shows all three load bands"
   }
  }
 }
