@@ -1,0 +1,44 @@
+[project]
+name = "metro-control"
+version = "0.1.0"
+description = "Line 1 SPb metro: shared contracts, segment load model, train simulator and dispatcher screen"
+readme = "README.md"
+authors = [
+    { name = "Nikolay Kovalev", email = "nkovalev602@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastexcel>=0.21.0",
+    "numpy>=2.4.6",
+    "openpyxl>=3.1.5",
+    "plotly>=7.1.0",
+    "polars>=2.0.0",
+    "pydantic>=2,<3",
+    "streamlit>=1.65.0",
+    "tzdata>=2026.5",
+]
+
+[project.scripts]
+metro-control = "metro_control.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+output-format = "concise"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
