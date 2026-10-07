@@ -23,6 +23,14 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - Organizer data stays in `data/raw/` (git-ignored). Commit only code, contracts, configs and small synthetic fixtures.
 - Commit locally after green checks and the user's OK; never push without being asked.
 
+## Git flow
+- `master` = releases only (demo-ready states); merged from `dev` only when the user asks. `dev` = integration branch, always green.
+- All work happens on a branch off `dev`: `feature/<slice-id>-<slug>` for backlog slices (e.g. `feature/S2-excel-loader`),
+  `feature/<slug>` for tooling/harness, `fix/<slug>` for bug fixes. Never commit directly to `dev` or `master`.
+- Finish a branch: tests + ruff green on the branch → user's OK → `git switch dev && git merge --no-ff <branch>` → tests green on `dev` → `git branch -d <branch>`.
+- Commit messages: conventional (`feat(scope): …`, `fix: …`, `chore: …`, `docs: …`); merge commits `merge: <branch purpose>`.
+- Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice, stops for approval before each commit and notifies).
+
 ## Token budget
 - Code is written by `slice-implementer` (sonnet); `haiku` for docs/fixture-only work. The main session writes briefs and verifies.
 - State lives in files (backlog, decisions, plan, data_notes) — run `/clear` between slices.
