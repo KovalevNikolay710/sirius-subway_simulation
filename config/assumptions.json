@@ -45,6 +45,42 @@
    ],
    "unit": "date",
    "source": "assumption: RF production calendar 2026 (May 9 Sat holiday, May 11 transferred day off)"
+  },
+  "od_hop_min": {
+   "value": 2.75,
+   "unit": "min",
+   "source": "derived: cycle_min 99 / 36 hops (incl. dwell, turnback)"
+  },
+  "od_gravity_beta": {
+   "value": 0.03,
+   "unit": "1/min",
+   "source": "assumption, uncalibrated: impedance exp(-beta*t)"
+  },
+  "od_mirror_morning_msk": {
+   "value": [
+    "06:00",
+    "11:00"
+   ],
+   "unit": "MSK clock",
+   "source": "assumption (D3)"
+  },
+  "od_mirror_evening_msk": {
+   "value": [
+    "16:00",
+    "21:00"
+   ],
+   "unit": "MSK clock",
+   "source": "assumption (D3)"
+  },
+  "od_transfer_factor": {
+   "value": {
+    "tekhnologichesky_institut_1": 1.3,
+    "pushkinskaya": 1.3,
+    "vladimirskaya": 1.3,
+    "ploshchad_vosstaniya": 1.5
+   },
+   "unit": "ratio",
+   "source": "assumption, uncalibrated: transfer passengers are not in turnstile counts; multiplies origin entries and attraction"
   }
  }
 }

@@ -105,6 +105,33 @@ def _load_entries(args: argparse.Namespace) -> int:
     return 0
 
 
+def _od_sanity(args: argparse.Namespace) -> int:
+    import polars as pl
+
+    from metro_control.line import load_line
+    from metro_control.od import load_od_params, sanity_report
+
+    path = Path(args.entries)
+    if not path.is_file():
+        print(f"error: entries parquet not found: {path}", file=sys.stderr)
+        return 1
+    rep = sanity_report(pl.read_parquet(path), load_line(), load_od_params())
+    if rep.height == 0:
+        print("error: no rows in range 05..24", file=sys.stderr)
+        return 1
+    print(f"days: {rep['date'].n_unique()}")
+    worst = rep.sort("ratio", descending=True)
+    print(f"max ratio: {worst['ratio'][0]:.3f}")
+    print("date       hour segment                          demand capacity ratio")
+    for d, h, seg, v, c, r in (
+        worst.head(5)
+        .select("date", "hour", "segment_id", "max_hourly_demand", "capacity", "ratio")
+        .iter_rows()
+    ):
+        print(f"{d} {h:>4} {seg:<32} {v:>8.0f} {c:>8.0f} {r:.3f}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="metro-control")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -121,6 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
     le.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))
     le.add_argument("--out", default="data/processed/station_entries.parquet")
     le.set_defaults(func=_load_entries)
+    od = sub.add_parser("od-sanity", help="OD assignment sanity report vs planned capacity")
+    od.add_argument("--entries", default="data/processed/station_entries.parquet")
+    od.set_defaults(func=_od_sanity)
     return parser
 
 
