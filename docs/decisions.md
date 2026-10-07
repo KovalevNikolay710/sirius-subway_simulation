@@ -17,3 +17,6 @@
 | D13 | 2026-10-07 | Orchestrator updates plan/backlog itself for small corrections, asks the user for scope changes | Plan must follow what slices reveal |
 | D14 | 2026-10-07 | Service day = sheet date, slots 03:00–02:45 MSK; after-midnight slots keep the service date's day_type; loader fails loudly on any total/header/vestibule mismatch | Matches organizer sheets; all 120 real days pass the checks |
 | D15 | 2026-10-07 | Holidays (`holidays_2026`: 23.02, 01.05, 09.05, 11.05) are an assumption in `config/assumptions.json`, holiday beats weekend | No calendar in organizer data |
+| D16 | 2026-10-07 | OD: P_ij ∝ A_j·exp(−β·t), β=0.03/min, hop 2.75 min (99/36), transfer factors 1.3/1.5 on 4 transfer stations, mirror 06–11↔16–21 MSK, static same-slot assignment; all in assumptions.json, uncalibrated | No OD/exits/transfers in data (D3) |
+| D17 | 2026-10-07 | `segment_demand` takes attraction from a separate frame: same day only for truth/offline (`od-sanity` is an oracle), history for forecast-time loads; empty mirrored window falls back to all-rows attraction; unknown stations/nulls fail loudly | No knowledge of the future; no silent demand loss |
+| D18 | 2026-10-07 | Real-data sanity: 120 days, peak hourly segment load ≤ 0.605 of planned pairs×1458 (vyborgskaya→lesnaya, 18h) | Baseline is under capacity; surge scenarios needed to show add_reserve |
