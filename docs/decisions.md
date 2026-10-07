@@ -15,3 +15,5 @@
 | D11 | 2026-10-07 | Git flow: `master` releases on request, `dev` integration, `feature/*` per slice, merge `--no-ff` after OK | User request; cleaner history and review points |
 | D12 | 2026-10-07 | `ui-checker` agent (chrome-devtools, screenshot) added as S4 pre-step, not earlier; no designer role, researcher via `research` skill ad hoc | Only UI slices need it; saves tokens |
 | D13 | 2026-10-07 | Orchestrator updates plan/backlog itself for small corrections, asks the user for scope changes | Plan must follow what slices reveal |
+| D14 | 2026-10-07 | Service day = sheet date, slots 03:00–02:45 MSK; after-midnight slots keep the service date's day_type; loader fails loudly on any total/header/vestibule mismatch | Matches organizer sheets; all 120 real days pass the checks |
+| D15 | 2026-10-07 | Holidays (`holidays_2026`: 23.02, 01.05, 09.05, 11.05) are an assumption in `config/assumptions.json`, holiday beats weekend | No calendar in organizer data |

@@ -9,6 +9,7 @@ Read this instead of opening the Excel files. Raw files: `data/raw/Данные 
 - Shape 28×99. Row 1 (0-based): column 0 empty, column 1 empty, columns 2..97 = 96 slot starts `03:00 … 02:45` as `datetime.time`
   (slots after midnight belong to the next calendar date). Row 2: line totals per slot, last cell = day total.
   Rows 3..26: 24 vestibules — column 0 name, column 1 day total, columns 2..97 entries per slot. Row 27: grand total.
+- fastexcel returns the header and many cells as strings (`1899-12-31 03:00:00`); load with `header_row=None`. Loader: `metro-control load-entries` (S2); all 120 days pass the total checks.
 - Vestibule names (rows 3..26, line order south → north): Пр.Ветеранов-1, Пр.Ветеранов-2, Ленинский пр.-1, Ленинский пр.-2, Автово,
   Кировский завод, Нарвская, Балтийская, Технологический институт-1 (no -2), Пушкинская, Владимирская, Пл. Восстания-1, Пл. Восстания-2,
   Чернышевская, Пл.Ленина-1, Пл.Ленина-2, Выборгская, Лесная, Пл. Мужества, Политехническая, Академическая, Гражданский пр.,
