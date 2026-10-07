@@ -35,6 +35,16 @@
    "value": 30,
    "unit": "min",
    "source": "D5 / ТЗ"
+  },
+  "holidays_2026": {
+   "value": [
+    "2026-02-23",
+    "2026-05-01",
+    "2026-05-09",
+    "2026-05-11"
+   ],
+   "unit": "date",
+   "source": "assumption: RF production calendar 2026 (May 9 Sat holiday, May 11 transferred day off)"
   }
  }
 }
