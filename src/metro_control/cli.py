@@ -132,6 +132,47 @@ def _od_sanity(args: argparse.Namespace) -> int:
     return 0
 
 
+def _mock_bundle(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    import polars as pl
+
+    from metro_control.mock import build_mock_bundle
+
+    entries = None
+    path = (
+        Path(args.entries)
+        if args.entries
+        else PROJECT_ROOT / "data/processed/station_entries.parquet"
+    )
+    if args.entries and not path.is_file():
+        print(f"error: entries parquet not found: {path}", file=sys.stderr)
+        return 1
+    if path.is_file():
+        try:
+            entries = pl.read_parquet(path)
+        except (pl.exceptions.PolarsError, OSError) as e:
+            print(f"error: cannot read {path}: {e}".splitlines()[0], file=sys.stderr)
+            return 1
+        need = {"station_id", "interval_start", "day_type", "entries"}
+        if need - set(entries.columns):
+            print(
+                f"error: {path} lacks columns {sorted(need - set(entries.columns))}",
+                file=sys.stderr,
+            )
+            return 1
+    try:
+        as_of = datetime.fromisoformat(args.as_of) if args.as_of else None
+        if as_of is not None and as_of.tzinfo is None:
+            raise ValueError("--as-of must include a timezone offset")
+        out = build_mock_bundle(args.out, entries, as_of)
+    except ValueError as e:
+        print(f"error: {e}".splitlines()[0], file=sys.stderr)
+        return 1
+    print(f"wrote mock bundle to {out} ({'parquet' if entries is not None else 'synthetic'})")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="metro-control")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -151,6 +192,11 @@ def build_parser() -> argparse.ArgumentParser:
     od = sub.add_parser("od-sanity", help="OD assignment sanity report vs planned capacity")
     od.add_argument("--entries", default="data/processed/station_entries.parquet")
     od.set_defaults(func=_od_sanity)
+    mb = sub.add_parser("mock-bundle", help="write a mock forecast/load/recommendation bundle")
+    mb.add_argument("--out", default="runs/demo")
+    mb.add_argument("--entries", default=None)
+    mb.add_argument("--as-of", default=None, help="ISO datetime with offset")
+    mb.set_defaults(func=_mock_bundle)
     return parser
 
 
