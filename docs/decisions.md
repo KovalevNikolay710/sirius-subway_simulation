@@ -12,3 +12,6 @@
 | D8 | 2026-10-07 | Station ids latin snake case south→north (`veteranov` … `devyatkino`); segment id `<from>__<to>`, 36 directed | Stable keys across 4 repos |
 | D9 | 2026-10-07 | Forecast package = 19 stations × 8 slots from `as_of` (first slot starts at `as_of`), `as_of ≤ generated_at`; recommendation `start ≥ as_of` | No knowledge of the future |
 | D10 | 2026-10-07 | `capacity_per_train` default 1458, overridable per row (>0) | Baltiets 1478 exists; organizers' 1458 is the default |
+| D11 | 2026-10-07 | Git flow: `master` releases on request, `dev` integration, `feature/*` per slice, merge `--no-ff` after OK | User request; cleaner history and review points |
+| D12 | 2026-10-07 | `ui-checker` agent (chrome-devtools, screenshot) added as S4 pre-step, not earlier; no designer role, researcher via `research` skill ad hoc | Only UI slices need it; saves tokens |
+| D13 | 2026-10-07 | Orchestrator updates plan/backlog itself for small corrections, asks the user for scope changes | Plan must follow what slices reveal |
