@@ -105,6 +105,7 @@
 - S10 Адаптеры к пакетам людей 2 и 4, отказы источников, README-путь «чистый клон → демо», полировка.
   Итог S10 (D41–D43): `metro-control team-bundle` импортирует файлы людей 2/4 (+ `explanation.txt`) в каталог запуска поверх mock-пакета, статусы источников — `sources.json` и боковая панель экрана.
 - S10a Политика человека 4 / прогноз человека 2 внутри `compare` (`--policy module:func`: LoadPackage → Recommendation по контракту); падение или невалидный ответ плагина = `source_error` в actions.jsonl, день продолжается; по умолчанию mock.
+  Итог S10a (D44): плагины получают только контрактные пакеты (LoadPackage копией; история < as_of), ошибки — строки `source_error` в actions.jsonl и предупреждения на вкладке симулятора; метка политики в manifest.json.
 
 ## Verification
 - Обновление 2: `uv run pytest` и `ruff check` зелёные; `jq . .claude/settings.local.json` валиден; `git status` не показывает settings.local.json;

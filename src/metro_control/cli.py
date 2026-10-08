@@ -187,6 +187,14 @@ def _compare(args: argparse.Namespace) -> int:
     if not path.is_file():
         print(f"error: entries parquet not found: {path}", file=sys.stderr)
         return 1
+    from metro_control.plugins import load_callable
+
+    try:
+        policy_fn = load_callable(args.policy) if args.policy else None
+        forecast_fn = load_callable(args.forecast) if args.forecast else None
+    except ValueError as e:
+        print(f"error: {e}".splitlines()[0], file=sys.stderr)
+        return 1
     t0 = time.perf_counter()
     try:
         res = compare(
@@ -195,6 +203,10 @@ def _compare(args: argparse.Namespace) -> int:
             load_line(),
             load_od_params(),
             load_assumption_items(),
+            policy_fn=policy_fn,
+            forecast_fn=forecast_fn,
+            policy_label=args.policy or "mock",
+            forecast_label=args.forecast or "mock",
         )
     except ValueError as e:
         print(f"error: {e}".splitlines()[0], file=sys.stderr)
@@ -348,6 +360,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cp.add_argument("--entries", default="data/processed/station_entries.parquet")
     cp.add_argument("--out", default="runs")
+    cp.add_argument("--policy", default=None, help="plug-in policy, module:func or file.py:func")
+    cp.add_argument(
+        "--forecast", default=None, help="plug-in forecast, module:func or file.py:func"
+    )
     cp.set_defaults(func=_compare)
     return parser
 

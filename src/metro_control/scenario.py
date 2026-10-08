@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 
 import polars as pl
 
-from metro_control import executor, mock, policy
+from metro_control import executor, mock, plugins, policy
 from metro_control.contracts import EffectComparison, Metrics, SimulationState
 from metro_control.dayrun import DAY_END_MIN, build_day, minutes_to_utc
 from metro_control.line import LineRef
@@ -182,12 +183,32 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _source_error(as_of: datetime, source: str, reason: str, outcome: str) -> dict[str, Any]:
+    return {
+        "as_of": _iso(as_of),
+        "recommendation_id": None,
+        "action": "none",
+        "target": "",
+        "start": None,
+        "end": None,
+        "status": "source_error",
+        "source": source,
+        "reason": reason,
+        "outcome": outcome,
+        "train_ids": [],
+    }
+
+
 def compare(
     scenario: str,
     entries: pl.DataFrame,
     line: LineRef,
     od_params: OdParams,
     assumptions: dict[str, Any],
+    policy_fn: Callable[..., Any] | None = None,
+    forecast_fn: Callable[..., Any] | None = None,
+    policy_label: str = "mock",
+    forecast_label: str = "mock",
 ) -> CompareResult:
     """Run one service day twice on the same demand and initial state.
 
@@ -229,9 +250,30 @@ def compare(
             break
         hist = history_all.filter(pl.col("interval_start") < as_of)
         sg, sw = _surge_for(spec, d, as_of)
-        rec, mem = policy.recommend_at(
-            hist, as_of, line, od_params, mem, dict(ex.reserves_left), sg, sw
-        )
+        rec: Any = None
+        if policy_fn is None and forecast_fn is None:
+            rec, mem = policy.recommend_at(
+                hist, as_of, line, od_params, mem, dict(ex.reserves_left), sg, sw
+            )
+        else:
+            fc = None
+            if forecast_fn is not None:
+                fc, err = plugins.call_forecast(forecast_fn, hist, as_of)
+                if err is not None:
+                    actions.append(_source_error(as_of, "forecast", err, "mock forecast used"))
+                    counts["source_error"] = counts.get("source_error", 0) + 1
+            if fc is None:
+                fc = mock.mock_forecast(hist, as_of)
+            ld = mock.mock_load(fc, hist, line, od_params, mock._slot_day_type(as_of), sg, sw)
+            if policy_fn is not None:
+                rec, err = plugins.call_policy(policy_fn, ld, as_of)
+                if err is not None:
+                    actions.append(_source_error(as_of, "policy", err, "step skipped"))
+                    counts["source_error"] = counts.get("source_error", 0) + 1
+            else:
+                rec, mem = policy.mock_policy(ld, as_of, mem, dict(ex.reserves_left))
+        if rec is None:
+            continue
         st, ex, out = executor.execute(st, params, ex, rec, ctx)
         counts[out.status] = counts.get(out.status, 0) + 1
         p = rec.payload
@@ -245,6 +287,7 @@ def compare(
                     "start": _iso(p.start),
                     "end": _iso(p.end),
                     "status": out.status,
+                    "source": policy_label,
                     "reason": p.reason,
                     "outcome": out.reason,
                     "train_ids": list(out.train_ids),
@@ -287,6 +330,8 @@ def compare(
         ),
         "spec_sha256": _sha(json.dumps(spec, sort_keys=True).encode()),
         "assumptions_sha256": _sha(json.dumps(assumptions, sort_keys=True).encode()),
+        "policy": policy_label,
+        "forecast": forecast_label,
     }
     return CompareResult(
         scenario,
