@@ -100,7 +100,7 @@ def forecast_tab():
                 )
             )
         components.html(
-            load_html(load_payload(load_pkg, names, marks)), height=420, scrolling=False
+            load_html(load_payload(load_pkg, names, marks)), height=392, scrolling=False
         )
 
     todo = actionable(recs.items)

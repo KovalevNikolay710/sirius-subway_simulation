@@ -43,7 +43,7 @@ def roundel(x) -> str:
 
 
 st.markdown(
-    f"""<div style="margin-bottom:4px"><div style="font-size:26px;font-weight:700;
+    f"""<div style="margin-bottom:22px"><div style="font-size:26px;font-weight:700;
 line-height:1.2;color:{INK}">Метро Петербурга</div>
 <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
 {"".join(roundel(x) for x in network)}
