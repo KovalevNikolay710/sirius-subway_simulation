@@ -191,6 +191,7 @@ def test_app_source_error(tmp_path, monkeypatch, result):  # noqa: F811
     monkeypatch.setenv("METRO_RUN_DIR", str(d))
     monkeypatch.setenv("METRO_SIM_DIR", str(d))
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+    at.switch_page("views/sim.py").run()
     assert not at.exception
     text = " ".join(x.value for x in at.warning) + " ".join(x.value for x in at.markdown)
     assert "ошибка источника" in text and "x.py:f" in text

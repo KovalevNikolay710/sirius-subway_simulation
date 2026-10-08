@@ -193,6 +193,7 @@ def test_sim_payload(result):
 def test_app_no_timeline(tmp_path, monkeypatch):
     (tmp_path / "metrics.json").write_text("{}")
     at = _app(tmp_path, monkeypatch).run()
+    at.switch_page("views/sim.py").run()
     assert not at.exception
     assert any("compare --scenario rail_surge" in i.value for i in at.info)
 

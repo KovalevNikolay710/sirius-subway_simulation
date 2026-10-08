@@ -1,5 +1,8 @@
 {
  "version": "0.1",
+ "id": "1",
+ "name_ru": "Кировско-Выборгская линия",
+ "color": "#D6083B",
  "stations": [
   {
    "id": "veteranov",

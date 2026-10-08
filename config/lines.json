@@ -1,0 +1,36 @@
+{
+ "version": "0.1",
+ "source": "metro.spb.ru official line colours / names",
+ "lines": [
+  {
+   "id": "1",
+   "name_ru": "Кировско-Выборгская линия",
+   "color": "#D6083B",
+   "active": true
+  },
+  {
+   "id": "2",
+   "name_ru": "Московско-Петроградская линия",
+   "color": "#0078C9",
+   "active": false
+  },
+  {
+   "id": "3",
+   "name_ru": "Невско-Василеостровская линия",
+   "color": "#009A49",
+   "active": false
+  },
+  {
+   "id": "4",
+   "name_ru": "Правобережная линия",
+   "color": "#EA7125",
+   "active": false
+  },
+  {
+   "id": "5",
+   "name_ru": "Фрунзенско-Приморская линия",
+   "color": "#702785",
+   "active": false
+  }
+ ]
+}
