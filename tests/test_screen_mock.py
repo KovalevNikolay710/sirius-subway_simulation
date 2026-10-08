@@ -265,3 +265,26 @@ def test_cli_bad_parquet(tmp_path, capsys):
         == 1
     )
     assert "Traceback" not in capsys.readouterr().err
+
+
+def test_load_payload_and_rec_target(bundle_dir):
+    from metro_control.line import load_line
+    from metro_control.sim_view import load_html, load_payload
+
+    b = load_bundle(bundle_dir)
+    lp, rp = b["load"].package, b["recommendation"].package
+    names = {s.id: s.name_ru for s in load_line().stations}
+    card = action_card(rp)
+    rec = dict(card, target_id=rp.payload.target, start=rp.payload.start, end=rp.payload.end)
+    p = load_payload(lp, names, rec)
+    t = len({r.interval_start for r in lp.payload})
+    assert len(p["times"]) == t and p["stations"][0] == "Девяткино"
+    assert all(len(row) == t for d in ("north", "south") for row in p["fill"][d])
+    tgt = p["rec"]["target"]
+    seg = p["segs"][tgt["seg"]] if "seg" in tgt else None
+    if seg is not None:  # the mock recommendation targets a segment
+        key = {r.segment_id: r for r in lp.payload}
+        assert rp.payload.target in key
+    assert p["rec"]["slots"] and max(p["rec"]["slots"]) < t
+    assert "__PAYLOAD__" not in load_html(p)
+    assert load_payload(lp, names, None)["rec"] is None

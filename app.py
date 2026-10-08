@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 
 import plotly.graph_objects as go
-import polars as pl
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -17,18 +16,16 @@ from metro_control.figures import (
     INK,
     LINE1,
     MUTED,
-    line_strip_figure,
 )
 from metro_control.line import load_line
 from metro_control.screen import (
     action_card,
     explanation_text,
     load_bundle,
-    segment_view,
     source_statuses,
     station_series,
 )
-from metro_control.sim_view import player_html, sim_payload
+from metro_control.sim_view import load_html, load_payload, player_html, sim_payload
 from metro_control.timeline import (
     find_sim_dir,
     load_timeline,
@@ -101,24 +98,25 @@ def fmt(t) -> str:
 
 
 def forecast_tab():
-    left, right = st.columns([3, 2])
-
-    with left, st.container(border=True):
-        st.subheader("Загрузка перегонов")
-        st.caption("Прогнозная загрузка по данным load.json")
-        if load_pkg is None:
-            st.info("Нет данных о загрузке (load.json недоступен).")
-        elif not load_pkg.payload:
-            st.info("Пакет загрузки пуст.")
-        else:
-            slots = sorted({r.interval_start for r in load_pkg.payload})
-            at = st.select_slider("Интервал (МСК)", options=slots, format_func=fmt)
-            view = segment_view(load_pkg, at).with_columns(
-                pl.col("r").alias("fill"), pl.lit(0.0).alias("left_behind")
+    if load_pkg is None:
+        st.info("Нет данных о загрузке (load.json недоступен).")
+    elif not load_pkg.payload:
+        st.info("Пакет загрузки пуст.")
+    else:
+        rec = None
+        if rec_pkg is not None:
+            card = action_card(rec_pkg)
+            rec = dict(
+                card,
+                target_id=rec_pkg.payload.target,
+                start=rec_pkg.payload.start,
+                end=rec_pkg.payload.end,
             )
-            st.plotly_chart(line_strip_figure(view, {}, names), width="stretch")
+        components.html(load_html(load_payload(load_pkg, names, rec)), height=455, scrolling=False)
 
-    with right, st.container(border=True):
+    left, right = st.columns(2, gap="medium")
+
+    with left, st.container(border=True, height=430):
         st.subheader("Рекомендация")
         if rec_pkg is None:
             st.info("Нет рекомендации (recommendation.json недоступен).")
@@ -136,7 +134,7 @@ def forecast_tab():
                     "Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации"
                 )
 
-    with right, st.container(border=True):
+    with right, st.container(border=True, height=430):
         st.subheader("Вход на станции")
         sid = st.selectbox(
             "Станция",
@@ -166,7 +164,7 @@ def forecast_tab():
                         mode="lines",
                         line=dict(width=0),
                         fill="tonexty",
-                        fillcolor="rgba(47,93,140,0.18)",
+                        fillcolor="rgba(0,120,201,0.16)",
                         name="q10–q90",
                     )
                 )
@@ -190,7 +188,7 @@ def forecast_tab():
                     )
                 )
             fig2.update_layout(
-                height=300,
+                height=250,
                 margin=dict(l=10, r=10, t=10, b=10),
                 yaxis_title="входы за 15 мин",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -254,10 +252,6 @@ def sim_tab():
         )
     except (OSError, KeyError, ValueError, TypeError):
         policy_label = "mock"
-    st.markdown(
-        f"Политика: **{policy_label}** (демо-политика, не рекомендация ML). "
-        "Воспроизведение записи `compare`: анимация идёт в браузере, данные не пересчитываются."
-    )
     for ac in actions:
         if ac.get("status") == "source_error":
             try:
@@ -265,11 +259,12 @@ def sim_tab():
             except (KeyError, TypeError, ValueError, AttributeError):
                 when = "?"
             st.warning(
-                f"{when}: ошибка источника ({ac.get('source', '?')}): {ac.get('reason', '')}. "
+                f"{when}: ошибка источника ({ac.get('source', '?')}, политика {policy_label}): "
+                f"{ac.get('reason', '')}. "
                 "Шаг политики пропущен, симуляция продолжилась."
             )
     payload = sim_payload(tl, names, actions, policy_label)
-    components.html(player_html(payload), height=1680, scrolling=False)
+    components.html(player_html(payload), height=1700, scrolling=False)
 
 
 tab_fc, tab_sim = st.tabs(["Прогноз и рекомендация", "Симулятор"])

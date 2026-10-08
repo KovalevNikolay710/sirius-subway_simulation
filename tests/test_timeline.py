@@ -182,6 +182,9 @@ def test_sim_payload(result):
         assert p["data"][v]["kpi"]["waiting"][5] == tl.frames[v][5]["waiting"]
     assert 0 < p["first"] < p["last"] < n
     assert [a["what"] for a in p["actions"]] == ["Снять поезд", "Ошибка источника"]
+    rm, err = p["actions"]
+    assert (rm["seg"], rm["dir"], rm["critical"], rm["applied"]) == (s - 2, "south", False, True)
+    assert err["error"] and err["seg"] is None and not err["critical"]
     assert p["actions"][0]["k"] == 13
     html = player_html(p)
     assert "__PAYLOAD__" not in html and "boom <\\/script>" in html
@@ -273,3 +276,16 @@ def test_heat_grid_real_shape(result):
     g = timeline.heat_grid(result.timeline, "diff", "north")
     assert len(g.z) == 18 and all(len(r) == len(g.ks) for r in g.z)
     assert 0 < len(g.ks) < 97
+
+
+def test_critical_action_rule():
+    from metro_control.sim_view import _critical
+
+    row = [0.5, 0.6, 0.7, 0.96, 0.8, 0.5, 0.4]
+    data = {"baseline": {"fill": {"north": [row], "south": [[None] * 7]}}}
+    add = {"action": "add_reserve"}
+    assert _critical(add, 0, "north", 1, data)  # full within the next hour
+    assert not _critical(add, 0, "north", 5, data)  # peak already passed
+    assert not _critical({"action": "remove_train"}, 0, "north", 1, data)
+    assert not _critical(add, 0, "south", 1, data)  # no departures
+    assert not _critical(add, None, None, 1, data)

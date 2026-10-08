@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Golos Text"; src: url("/app/static/GolosText.ttf") format("truetype"); font-weight: 400 800; }
+:root { --card: #FFFFFF; --rule: #E3E6EA; --ink: #1B2430; --muted: #6B7685; --calm: #0078C9; --quiet: #CFE3F3;
+  --tight: #EA7125; --over: #D6083B; --line1: #D6083B; --console: #0E2A47; --console-2: #1C3D60; }
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; margin: 0; background: #F4F5F7; color: var(--ink); font-family: "Golos Text", system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; margin: 2px; }
+.head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.sub { color: var(--muted); font-size: 12.5px; margin: 3px 0 10px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; border: 1px solid #C9CED6; }
+.bar { display: flex; align-items: center; gap: 12px; background: var(--console); border-radius: 10px; padding: 8px 10px; }
+.play { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--calm); color: #fff; cursor: pointer; display: grid; place-items: center; flex: none; }
+.play.on { background: var(--tight); color: var(--ink); }
+.play svg { width: 18px; height: 18px; fill: currentColor; }
+.play:focus-visible, .slots:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.slots { position: relative; flex: 1; display: grid; gap: 4px; cursor: grab; touch-action: none; user-select: none; padding-top: 4px; }
+.slots.drag { cursor: grabbing; }
+.slot { border-radius: 6px; background: var(--console-2); color: #DDE3EA; text-align: center; font-size: 12px; padding: 4px 0 5px; position: relative; transition: background .2s, color .2s; }
+.slot .pk { height: 6px; border-radius: 3px; margin: 0 6px 4px; }
+.slot.on { background: #fff; color: var(--ink); font-weight: 600; }
+.slot.rec::after { content: ""; position: absolute; left: 6px; right: 6px; top: -5px; height: 3px; border-radius: 2px; background: var(--tight); }
+.hint { color: #AEB7C4; font-size: 11.5px; width: 150px; flex: none; }
+#strip .sg { transform-box: fill-box; transform-origin: center; transition: transform .18s ease, filter .18s ease; }
+#strip .sg:hover { transform: scale(1.14); filter: drop-shadow(0 3px 4px rgba(27,36,48,.28)); }
+#strip .hl { stroke: var(--ink); stroke-width: 2.5; animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { stroke-opacity: .25; } }
+.recline { font-size: 12.5px; color: var(--ink); margin-top: 2px; min-height: 18px; }
+.recline b { color: var(--tight); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<section class="panel">
+  <div class="head"><h3>Загрузка перегонов: прогноз</h3><div class="legend">
+    <span><i style="background:#CFE3F3"></i>до 50 %</span><span><i style="background:#0078C9"></i>50–80 %</span>
+    <span><i style="background:#EA7125"></i>80–100 %</span><span><i style="background:#D6083B"></i>больше 100 %: перегрузка</span></div></div>
+  <div class="sub">Выберите или протяните интервал, ▶ прокрутит все интервалы. Оранжевая черта над интервалом — окно рекомендации, её перегон обведён на схеме.</div>
+  <div class="bar">
+    <button class="play" id="play" title="Прокрутить интервалы" aria-label="Пуск"><svg viewBox="0 0 24 24" id="pi"><path d="M7 4v16l13-8z"/></svg></button>
+    <div class="slots" id="slots" tabindex="0" role="slider" aria-label="Интервал прогноза"></div>
+    <div class="hint">Полоска в интервале — самая загруженная точка линии.</div>
+  </div>
+  <svg id="strip" width="100%" height="262"></svg>
+  <div class="recline" id="recline"></div>
+</section>
+<script>
+const P = __PAYLOAD__;
+const C = { ink: "#1B2430", muted: "#6B7685", quiet: "#CFE3F3", calm: "#0078C9", tight: "#EA7125", over: "#D6083B", line1: "#D6083B", none: "#E9ECEF" };
+const T = P.times.length, S = P.segs.length, ST = P.stations.length, DIRS = ["north", "south"];
+const $ = (id) => document.getElementById(id);
+const hex = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+const mix = (a, b, f) => { const x = hex(a), y = hex(b); return "rgb(" + x.map((v, i) => Math.round(v + (y[i] - v) * f)).join(",") + ")"; };
+const band = (f) => f == null ? null : f < 0.5 ? C.quiet : f <= 0.8 ? C.calm : f <= 1.0 ? C.tight : C.over;
+function smooth(f) {
+  if (f == null) return C.none; if (f >= 1.03) return C.over;
+  const st = [[0, "#E1EEF8"], [0.5, "#7DB7E3"], [0.8, C.calm], [0.85, C.tight], [1.0, C.tight], [1.03, C.over]];
+  for (let i = 1; i < st.length; i++) if (f <= st[i][0]) return mix(st[i - 1][1], st[i][1], (f - st[i - 1][0]) / (st[i][0] - st[i - 1][0]));
+  return C.over;
+}
+const lerp = (a, b, f) => (a == null || b == null) ? (f < 0.5 ? a : b) : a + (b - a) * f;
+const at = (arr, pos) => { const k = Math.floor(pos); return lerp(arr[k], arr[Math.min(k + 1, T - 1)], pos - k); };
+const state = { pos: 0, target: 0, playing: false };
+let dirty = true;
+
+// slots (interval scrubber)
+const slots = $("slots"); slots.style.gridTemplateColumns = `repeat(${T}, 1fr)`;
+const recSlots = new Set(P.rec ? P.rec.slots : []);
+P.times.forEach((t, k) => {
+  let m = null; for (const d of DIRS) for (const row of P.fill[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]);
+  const s = document.createElement("div"); s.className = "slot" + (recSlots.has(k) ? " rec" : "");
+  s.innerHTML = `<div class="pk" style="background:${band(m) || "#2B4D72"}"></div>${t}`; s.title = m == null ? t : `${t}: пик ${Math.round(m * 100)} %`;
+  slots.appendChild(s);
+});
+function slotAt(cx) { const r = slots.getBoundingClientRect(); return Math.min(T - 1, Math.max(0, Math.floor((cx - r.left) / r.width * T))); }
+let drag = false;
+slots.addEventListener("pointerdown", (e) => { drag = true; setPlaying(false); slots.classList.add("drag"); slots.setPointerCapture(e.pointerId); goTo(slotAt(e.clientX)); });
+slots.addEventListener("pointermove", (e) => { if (drag) goTo(slotAt(e.clientX)); });
+const end = () => { drag = false; slots.classList.remove("drag"); };
+slots.addEventListener("pointerup", end); slots.addEventListener("pointercancel", end);
+slots.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") { goTo(Math.min(T - 1, state.target + 1)); e.preventDefault(); }
+  if (e.key === "ArrowLeft") { goTo(Math.max(0, state.target - 1)); e.preventDefault(); } });
+function goTo(k) { state.target = k; dirty = true; }
+
+// strip
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, a, p) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+let E = null;
+function build() {
+  const sv = $("strip"), w = sv.clientWidth; if (!w) return; sv.innerHTML = "";
+  const L = 70, R = 24, dx = (w - L - R) / (ST - 1), yN = 40, yS = 104, yL = 72;
+  el("text", { x: 0, y: yN + 4, fill: C.muted, "font-size": 12 }, sv).textContent = "на север";
+  el("text", { x: 0, y: yS + 4, fill: C.muted, "font-size": 12 }, sv).textContent = "на юг";
+  el("line", { x1: L, x2: w - R, y1: yL, y2: yL, stroke: C.line1, "stroke-width": 3 }, sv);
+  const segs = [];
+  for (let i = 0; i < S; i++) { const x = L + i * dx + 3, wd = dx - 6, row = {};
+    for (const [d, y] of [["north", yN], ["south", yS]]) { const g = el("g", { class: "sg" }, sv);
+      row[d] = { r: el("rect", { x, y: y - 14, width: wd, height: 28, rx: 4 }, g),
+        t: el("text", { x: x + wd / 2, y: y + 4, "text-anchor": "middle", "font-size": 11, "font-weight": 600, "pointer-events": "none" }, g),
+        ti: el("title", {}, g) }; }
+    segs.push(row); }
+  const st = [];
+  for (let s = 0; s < ST; s++) { const x = L + s * dx;
+    const c = el("circle", { cx: x, cy: yL, r: 4, fill: "#fff", stroke: C.line1, "stroke-width": 2 }, sv);
+    el("text", { x, y: 138, "font-size": 11.5, fill: C.ink, "text-anchor": "end", transform: `rotate(-40 ${x} 138)` }, sv).textContent = P.stations[s];
+    st.push(c); }
+  E = { segs, st };
+}
+function draw() {
+  if (!E) build(); if (!E) return;
+  const k = Math.round(state.pos), tgt = P.rec && P.rec.target, inWin = recSlots.has(k);
+  for (let i = 0; i < S; i++) for (const d of DIRS) {
+    const f = at(P.fill[d][i], state.pos), e = E.segs[i][d];
+    e.r.setAttribute("fill", smooth(f));
+    e.t.textContent = f != null && f > 0.8 ? Math.round(f * 100) + "%" : "";
+    e.t.setAttribute("fill", f != null && f > 1.0 ? "#fff" : C.ink);
+    const hl = inWin && tgt && tgt.seg === i && tgt.dir === d;
+    e.r.setAttribute("class", hl ? "hl" : "");
+    const dem = P.demand[d][i][k];
+    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}, ${P.times[k]}: ` +
+      (f == null ? "нет движения" : `загрузка ${Math.round(f * 100)} %` + (dem != null ? `, пассажиров ${Math.round(dem)}` : ""));
+  }
+  E.st.forEach((c, s) => c.setAttribute("r", inWin && tgt && tgt.station === s ? 8 : 4));
+  [...slots.children].forEach((s, n) => s.classList.toggle("on", n === k));
+  slots.setAttribute("aria-valuetext", P.times[k]);
+  $("recline").innerHTML = P.rec ? (inWin ? `<b>Рекомендация в этом интервале:</b> ${esc(P.rec.title)}, ${esc(P.rec.where)}, окно ${esc(P.rec.window)}${P.rec.mock ? " (mock)" : ""}.`
+    : `Рекомендация действует ${esc(P.rec.window)}: ${esc(P.rec.title)}, ${esc(P.rec.where)}.`) : "Рекомендации нет.";
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// animation: pos eases toward target; playing advances the target every 1.2 s
+let last = null, acc = 0;
+function loop(ts) {
+  const dt = last == null ? 0 : Math.min(0.1, (ts - last) / 1000); last = ts;
+  if (state.playing) { acc += dt; if (acc >= 1.2) { acc = 0; if (state.target >= T - 1) setPlaying(false); else goTo(state.target + 1); } }
+  const d = state.target - state.pos;
+  if (Math.abs(d) > 0.002) { state.pos += d * Math.min(1, dt * 7); dirty = true; } else if (state.pos !== state.target) { state.pos = state.target; dirty = true; }
+  if (dirty) { dirty = false; try { draw(); } catch (e) { console.error(e); } }
+  requestAnimationFrame(loop);
+}
+function setPlaying(on) { state.playing = on; acc = 0; const b = $("play"); b.classList.toggle("on", on);
+  $("pi").innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>'; b.setAttribute("aria-label", on ? "Пауза" : "Пуск"); }
+$("play").onclick = () => { if (!state.playing && state.target >= T - 1) goTo(0); setPlaying(!state.playing); };
+new ResizeObserver(() => { E = null; dirty = true; }).observe(document.body);
+requestAnimationFrame(loop);
+if (document.fonts) document.fonts.ready.then(() => { E = null; dirty = true; });
+</script>
+</body>
+</html>
