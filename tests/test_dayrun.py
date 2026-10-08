@@ -124,7 +124,7 @@ def test_slot_od_rowsums_and_segment_demand():
     assert np.allclose(od.sum(axis=2), raw * factor)
     dem = segment_demand(e, e, line, par)
     north = np.array([od[0, : k + 1, k + 1 :].sum() for k in range(18)])
-    got = dem.filter(pl.col("interval_start") == slots[0])["demand"].to_numpy()
+    got = dem.filter(pl.col("ts") == slots[0])["demand"].to_numpy()
     assert np.allclose(got[0::2], north)
     assert assign is not None
 
@@ -155,7 +155,7 @@ def test_simulate_day_surge_and_errors():
     assert st.denied > 0
     assert all(x.load_after <= p.capacity + 1e-6 for x in st.log)
     mixed = e.with_columns(
-        pl.when(pl.col("station_id") == "veteranov")
+        pl.when(pl.col("station_id") == "prospekt_veteranov")
         .then(pl.lit("sunday"))
         .otherwise(pl.col("day_type"))
         .alias("day_type")

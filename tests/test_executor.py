@@ -29,8 +29,8 @@ ITEMS = load_assumption_items()
 PARAMS = day_sim_params(LINE, ITEMS)
 ORIGIN = service_origin(datetime(2026, 9, 3, tzinfo=UTC).date())
 CTX = ExecContext(ORIGIN, "weekday", LINE, ITEMS)
-NORTH_SEG = "veteranov__leninsky_prospekt"
-SOUTH_SEG = "leninsky_prospekt__veteranov"
+NORTH_SEG = "prospekt_veteranov__leninsky_prospekt"
+SOUTH_SEG = "leninsky_prospekt__prospekt_veteranov"
 
 
 def at(t_min: float) -> datetime:
@@ -110,7 +110,7 @@ def test_add_reserve_and_duplicate_and_exhaustion():
     end = run(s1, PARAMS, [], 1440)
     logs = [x for x in end.log if x.train_id == "R-avtovo-1"]
     assert min(x.t for x in logs) >= 560
-    assert len([x for x in logs if x.station == "veteranov"]) == 1
+    assert len([x for x in logs if x.station == "prospekt_veteranov"]) == 1
     assert logs[-1].station == "devyatkino" and not end.trains["R-avtovo-1"].in_service
 
 
@@ -192,8 +192,8 @@ def test_rejections_leave_sim_unchanged():
     ex = new_exec_state(LINE)
     saved = (copy.deepcopy(sim), copy.deepcopy(ex))
     cases = [
-        rec("a", "limit_entry", "veteranov", 870),
-        rec("b", "add_reserve", "veteranov", 870),
+        rec("a", "limit_entry", "prospekt_veteranov", 870),
+        rec("b", "add_reserve", "prospekt_veteranov", 870),
         rec("c", "add_reserve", NORTH_SEG, 880),
         rec("d", "add_reserve", NORTH_SEG, 800, 800, 860),
     ]

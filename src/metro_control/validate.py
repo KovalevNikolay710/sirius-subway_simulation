@@ -23,7 +23,7 @@ def validate_file(path: Path | str) -> list[str]:
     if model is None:
         return [f"{name}: kind: unknown kind {kind!r}; expected one of {sorted(PACKAGES)}"]
     try:
-        model.model_validate(data)
+        pkg = model.model_validate(data)
     except ValidationError as e:
         return [
             f"{name}: {'.'.join(str(x) for x in err['loc']) or '$'}: {err['msg']}"
@@ -31,4 +31,8 @@ def validate_file(path: Path | str) -> list[str]:
         ]
     except (OSError, ValueError) as e:
         return [f"{name}: $: cannot load config/line.json or validate ({e})"]
+    if kind == "forecast":
+        from metro_control.team_schema import to_team_rows, validate_team_rows
+
+        return [f"{name}: team: {m}" for m in validate_team_rows(to_team_rows(pkg))]
     return []

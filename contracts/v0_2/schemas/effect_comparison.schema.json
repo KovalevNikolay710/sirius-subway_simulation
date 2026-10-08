@@ -1,0 +1,147 @@
+{
+ "$defs": {
+  "EffectPayload": {
+   "additionalProperties": false,
+   "properties": {
+    "baseline": {
+     "$ref": "#/$defs/Metrics"
+    },
+    "baseline_run_id": {
+     "title": "Baseline Run Id",
+     "type": "string"
+    },
+    "policy": {
+     "$ref": "#/$defs/Metrics"
+    },
+    "policy_run_id": {
+     "title": "Policy Run Id",
+     "type": "string"
+    },
+    "scenario": {
+     "title": "Scenario",
+     "type": "string"
+    }
+   },
+   "required": [
+    "scenario",
+    "baseline_run_id",
+    "policy_run_id",
+    "baseline",
+    "policy"
+   ],
+   "title": "EffectPayload",
+   "type": "object"
+  },
+  "Manifest": {
+   "additionalProperties": false,
+   "properties": {
+    "checksum": {
+     "title": "Checksum",
+     "type": "string"
+    },
+    "source": {
+     "title": "Source",
+     "type": "string"
+    }
+   },
+   "required": [
+    "source",
+    "checksum"
+   ],
+   "title": "Manifest",
+   "type": "object"
+  },
+  "Metrics": {
+   "additionalProperties": false,
+   "properties": {
+    "denied_boardings": {
+     "title": "Denied Boardings",
+     "type": "number"
+    },
+    "max_fill": {
+     "title": "Max Fill",
+     "type": "number"
+    },
+    "mean_fill": {
+     "title": "Mean Fill",
+     "type": "number"
+    },
+    "queue_left": {
+     "title": "Queue Left",
+     "type": "number"
+    },
+    "train_hours": {
+     "title": "Train Hours",
+     "type": "number"
+    },
+    "train_km": {
+     "title": "Train Km",
+     "type": "number"
+    },
+    "wait_pax_min": {
+     "title": "Wait Pax Min",
+     "type": "number"
+    }
+   },
+   "required": [
+    "wait_pax_min",
+    "queue_left",
+    "denied_boardings",
+    "max_fill",
+    "mean_fill",
+    "train_hours",
+    "train_km"
+   ],
+   "title": "Metrics",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "properties": {
+  "data_mode": {
+   "enum": [
+    "real",
+    "mock",
+    "synthetic"
+   ],
+   "title": "Data Mode",
+   "type": "string"
+  },
+  "generated_at": {
+   "format": "date-time",
+   "title": "Generated At",
+   "type": "string"
+  },
+  "kind": {
+   "const": "effect_comparison",
+   "title": "Kind",
+   "type": "string"
+  },
+  "manifest": {
+   "$ref": "#/$defs/Manifest"
+  },
+  "payload": {
+   "$ref": "#/$defs/EffectPayload"
+  },
+  "run_id": {
+   "title": "Run Id",
+   "type": "string"
+  },
+  "schema_version": {
+   "const": "0.2",
+   "title": "Schema Version",
+   "type": "string"
+  }
+ },
+ "required": [
+  "schema_version",
+  "run_id",
+  "generated_at",
+  "data_mode",
+  "manifest",
+  "kind",
+  "payload"
+ ],
+ "title": "EffectComparison",
+ "type": "object"
+}

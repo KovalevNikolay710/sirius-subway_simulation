@@ -26,7 +26,7 @@ def _result_run(fx):
 
     def spy(history, as_of, *a, **k):
         rec, mem = orig(history, as_of, *a, **k)
-        hmax = history["interval_start"].max() if history.height else None
+        hmax = history["ts"].max() if history.height else None
         calls.append((as_of, hmax, rec.payload.as_of))
         return rec, mem
 

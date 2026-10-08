@@ -50,28 +50,26 @@ def test_apply_shift_and_surge():
             "overlay": {
                 "type": "surge",
                 "factor": 3.0,
-                "stations": ["ploshchad_vosstaniya", "ploshchad_lenina"],
+                "stations": ["vosstaniya", "ploshchad_lenina"],
                 "start_msk": "07:00",
                 "end_msk": "09:00",
             },
         },
     }
     # distinct per-slot values
-    day = day.with_columns(
-        (pl.col("entries") + pl.col("interval_start").dt.minute()).alias("entries")
-    )
+    day = day.with_columns((pl.col("entries") + pl.col("ts").dt.minute()).alias("entries"))
     sh = scenario.apply_scenario(day, spec["snowfall"])
     assert sh["entries"].sum() == pytest.approx(day["entries"].sum())
     t0 = datetime(2026, 9, 30, 3, 0, tzinfo=UTC)  # 06:00 MSK
-    f = lambda df, t: df.filter((pl.col("station_id") == ST[0]) & (pl.col("interval_start") == t))[  # noqa: E731
+    f = lambda df, t: df.filter((pl.col("station_id") == ST[0]) & (pl.col("ts") == t))[  # noqa: E731
         "entries"
     ][0]
     assert f(sh, t0 + timedelta(minutes=30)) == f(day, t0)
     su = scenario.apply_scenario(day, spec["rail_surge"])
-    j = day.join(su, on=["station_id", "interval_start"], suffix="_n")
+    j = day.join(su, on=["station_id", "ts"], suffix="_n")
     ch = j.filter((pl.col("entries") != pl.col("entries_n")) & (pl.col("entries") > 0))
-    assert set(ch["station_id"]) == {"ploshchad_vosstaniya", "ploshchad_lenina"}
-    msk_h = ch["interval_start"].dt.convert_time_zone("Europe/Moscow").dt.hour()
+    assert set(ch["station_id"]) == {"vosstaniya", "ploshchad_lenina"}
+    msk_h = ch["ts"].dt.convert_time_zone("Europe/Moscow").dt.hour()
     assert set(msk_h) == {7, 8}
     assert (ch["entries_n"] / ch["entries"]).to_list() == pytest.approx([3.0] * ch.height)
     assert scenario.apply_scenario(day, spec["quiet_weekend"]).equals(day)
@@ -127,7 +125,7 @@ def test_cli_missing_parquet(tmp_path, capsys):
 
 def test_cli_missing_date(tmp_path, capsys, fx):
     p = tmp_path / "e.parquet"
-    fx.filter(pl.col("interval_start") < datetime(2026, 9, 29, tzinfo=UTC)).write_parquet(p)
+    fx.filter(pl.col("ts") < datetime(2026, 9, 29, tzinfo=UTC)).write_parquet(p)
     rc = main(["compare", "--scenario", "rail_surge", "--entries", str(p), "--out", str(tmp_path)])
     assert rc == 1
     assert "2026-09-30" in capsys.readouterr().err
@@ -137,7 +135,7 @@ def test_surge_window_limits_multiplier(fx):
     from metro_control import mock
 
     as_of = datetime(2026, 9, 30, 2, 0, tzinfo=UTC)  # 05:00 MSK
-    hist = fx.filter(pl.col("interval_start") < as_of)
+    hist = fx.filter(pl.col("ts") < as_of)
     fc = mock.mock_forecast(hist, as_of)
     f = {s: 3.0 for s in ST}
     w = (datetime(2026, 9, 30, 3, 0, tzinfo=UTC), datetime(2026, 9, 30, 4, 0, tzinfo=UTC))
@@ -149,7 +147,7 @@ def test_surge_window_limits_multiplier(fx):
     def by_t(pkg):
         out = {}
         for r in pkg.payload:
-            out[r.interval_start] = out.get(r.interval_start, 0.0) + r.demand
+            out[r.ts] = out.get(r.ts, 0.0) + r.demand
         return out
 
     b, x, y = by_t(base), by_t(win), by_t(flat)

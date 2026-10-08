@@ -5,7 +5,7 @@
  "color": "#D6083B",
  "stations": [
   {
-   "id": "veteranov",
+   "id": "prospekt_veteranov",
    "name_ru": "Проспект Ветеранов",
    "order": 0,
    "vestibules": [
@@ -55,7 +55,7 @@
    ]
   },
   {
-   "id": "tekhnologichesky_institut_1",
+   "id": "tekhnologichesky_institut",
    "name_ru": "Технологический институт-1",
    "order": 6,
    "vestibules": [
@@ -79,7 +79,7 @@
    ]
   },
   {
-   "id": "ploshchad_vosstaniya",
+   "id": "vosstaniya",
    "name_ru": "Площадь Восстания",
    "order": 9,
    "vestibules": [
@@ -164,16 +164,16 @@
  ],
  "segments": [
   {
-   "id": "veteranov__leninsky_prospekt",
-   "from_station": "veteranov",
+   "id": "prospekt_veteranov__leninsky_prospekt",
+   "from_station": "prospekt_veteranov",
    "to_station": "leninsky_prospekt",
    "direction": "north",
    "order": 0
   },
   {
-   "id": "leninsky_prospekt__veteranov",
+   "id": "leninsky_prospekt__prospekt_veteranov",
    "from_station": "leninsky_prospekt",
-   "to_station": "veteranov",
+   "to_station": "prospekt_veteranov",
    "direction": "south",
    "order": 0
   },
@@ -234,30 +234,30 @@
    "order": 4
   },
   {
-   "id": "baltiyskaya__tekhnologichesky_institut_1",
+   "id": "baltiyskaya__tekhnologichesky_institut",
    "from_station": "baltiyskaya",
-   "to_station": "tekhnologichesky_institut_1",
+   "to_station": "tekhnologichesky_institut",
    "direction": "north",
    "order": 5
   },
   {
-   "id": "tekhnologichesky_institut_1__baltiyskaya",
-   "from_station": "tekhnologichesky_institut_1",
+   "id": "tekhnologichesky_institut__baltiyskaya",
+   "from_station": "tekhnologichesky_institut",
    "to_station": "baltiyskaya",
    "direction": "south",
    "order": 5
   },
   {
-   "id": "tekhnologichesky_institut_1__pushkinskaya",
-   "from_station": "tekhnologichesky_institut_1",
+   "id": "tekhnologichesky_institut__pushkinskaya",
+   "from_station": "tekhnologichesky_institut",
    "to_station": "pushkinskaya",
    "direction": "north",
    "order": 6
   },
   {
-   "id": "pushkinskaya__tekhnologichesky_institut_1",
+   "id": "pushkinskaya__tekhnologichesky_institut",
    "from_station": "pushkinskaya",
-   "to_station": "tekhnologichesky_institut_1",
+   "to_station": "tekhnologichesky_institut",
    "direction": "south",
    "order": 6
   },
@@ -276,30 +276,30 @@
    "order": 7
   },
   {
-   "id": "vladimirskaya__ploshchad_vosstaniya",
+   "id": "vladimirskaya__vosstaniya",
    "from_station": "vladimirskaya",
-   "to_station": "ploshchad_vosstaniya",
+   "to_station": "vosstaniya",
    "direction": "north",
    "order": 8
   },
   {
-   "id": "ploshchad_vosstaniya__vladimirskaya",
-   "from_station": "ploshchad_vosstaniya",
+   "id": "vosstaniya__vladimirskaya",
+   "from_station": "vosstaniya",
    "to_station": "vladimirskaya",
    "direction": "south",
    "order": 8
   },
   {
-   "id": "ploshchad_vosstaniya__chernyshevskaya",
-   "from_station": "ploshchad_vosstaniya",
+   "id": "vosstaniya__chernyshevskaya",
+   "from_station": "vosstaniya",
    "to_station": "chernyshevskaya",
    "direction": "north",
    "order": 9
   },
   {
-   "id": "chernyshevskaya__ploshchad_vosstaniya",
+   "id": "chernyshevskaya__vosstaniya",
    "from_station": "chernyshevskaya",
-   "to_station": "ploshchad_vosstaniya",
+   "to_station": "vosstaniya",
    "direction": "south",
    "order": 9
   },
@@ -583,7 +583,7 @@
   },
   "turnback_stations": {
    "value": [
-    "ploshchad_vosstaniya",
+    "vosstaniya",
     "ploshchad_lenina",
     "avtovo"
    ],

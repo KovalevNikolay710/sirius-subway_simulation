@@ -17,7 +17,7 @@ def iso(dt: datetime) -> str:
 
 def envelope(kind: str, payload: Any, mode: str = "synthetic") -> dict[str, Any]:
     return {
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "kind": kind,
         "run_id": "example-run-001",
         "generated_at": iso(AS_OF),
@@ -36,15 +36,18 @@ def forecast(quantiles_ready: bool = True) -> dict[str, Any]:
             rows.append(
                 {
                     "station_id": s,
-                    "interval_start": iso(AS_OF + timedelta(minutes=15 * k)),
+                    "ts": iso(AS_OF + timedelta(minutes=15 * k)),
                     "q10": q[0],
                     "q50": q[1],
                     "q90": q[2],
+                    "horizon_min": 15 * (k + 1),
+                    "baseline": base,
+                    "is_anomaly": False,
+                    "model_version": "mock_percentile_v1",
                 }
             )
     payload = {
         "as_of": iso(AS_OF),
-        "model_name": "mock",
         "status": "mock",
         "quantiles_ready": quantiles_ready,
         "rows": rows,
@@ -56,7 +59,7 @@ def station_entries() -> dict[str, Any]:
     rows = [
         {
             "station_id": "avtovo",
-            "interval_start": iso(AS_OF),
+            "ts": iso(AS_OF),
             "day_type": "weekday",
             "entries": 123.0,
         }
@@ -68,7 +71,7 @@ def load() -> dict[str, Any]:
     rows = [
         {
             "segment_id": segment_ids()[0],
-            "interval_start": iso(AS_OF),
+            "ts": iso(AS_OF),
             "demand": 2916.0,
             "departures": 2,
             "capacity_per_train": 1458,
@@ -76,7 +79,7 @@ def load() -> dict[str, Any]:
         },
         {
             "segment_id": segment_ids()[1],
-            "interval_start": iso(AS_OF),
+            "ts": iso(AS_OF),
             "demand": 0.0,
             "departures": 0,
             "capacity_per_train": 1458,
@@ -145,7 +148,7 @@ def invalid_cases() -> dict[str, dict[str, Any]]:
     f["payload"]["rows"][0]["station_id"] = "nowhere"
     out["forecast_unknown_station"] = f
     f = forecast()
-    f["payload"]["rows"][0]["interval_start"] = iso(AS_OF - SLOT15)
+    f["payload"]["rows"][0]["ts"] = iso(AS_OF - SLOT15)
     out["forecast_interval_before_as_of"] = f
     f = forecast()
     f["generated_at"] = "2026-09-30T12:00:00+03:00"
@@ -154,12 +157,12 @@ def invalid_cases() -> dict[str, dict[str, Any]]:
     f["manifest"]["checksum"] = "sha256:xyz"
     out["envelope_bad_checksum"] = f
     f = load()
-    f["schema_version"] = "0.2"
-    out["envelope_version_0_2"] = f
+    f["schema_version"] = "0.1"
+    out["envelope_version_0_1"] = f
     f = forecast()
     f["payload"]["as_of"] = iso(AS_OF + SLOT15)
     for r in f["payload"]["rows"]:
-        r["interval_start"] = iso(datetime.fromisoformat(r["interval_start"]) + SLOT15)
+        r["ts"] = iso(datetime.fromisoformat(r["ts"]) + SLOT15)
     out["forecast_as_of_after_generated"] = f
     f = recommendation()
     f["payload"]["start"] = iso(AS_OF - SLOT15)

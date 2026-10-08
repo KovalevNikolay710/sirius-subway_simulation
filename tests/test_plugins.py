@@ -38,7 +38,7 @@ _calls = {"n": 0, "t": None}
 
 def _mixed(load):
     """Cycle over four behaviours: raise, invalid, future as_of, valid person4 add_reserve."""
-    as_of = min(x.interval_start for x in load.payload)
+    as_of = min(x.ts for x in load.payload)
     i = _calls["n"] % 4
     _calls["n"] += 1
     if i == 0:
@@ -98,8 +98,8 @@ def test_invalid_future_and_valid(mixed):
 
 
 def test_policy_gets_copy(fx):
-    as_of = fx["interval_start"].max()
-    hist = fx.filter(fx["interval_start"] < as_of)
+    as_of = fx["ts"].max()
+    hist = fx.filter(fx["ts"] < as_of)
     ld = mock.mock_load(
         mock.mock_forecast(hist, as_of), hist, LINE, load_od_params(), "weekday", {}
     )
@@ -129,8 +129,8 @@ def test_forecast_raises(fx, result):
 
 
 def test_forecast_history_copy(fx):
-    as_of = fx["interval_start"].max()
-    h = fx.filter(fx["interval_start"] < as_of)
+    as_of = fx["ts"].max()
+    h = fx.filter(fx["ts"] < as_of)
     n = h.height
 
     def f(hist, t):

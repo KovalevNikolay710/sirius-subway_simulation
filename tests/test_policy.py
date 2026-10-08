@@ -11,8 +11,8 @@ T = datetime(2026, 9, 3, 14, 30, tzinfo=UTC)
 LINE = load_line()
 CAP = 1458.0
 FULL = {"avtovo": 2, "severnoye": 2}
-NORTH_SEG = "veteranov__leninsky_prospekt"
-SOUTH_SEG = "leninsky_prospekt__veteranov"
+NORTH_SEG = "prospekt_veteranov__leninsky_prospekt"
+SOUTH_SEG = "leninsky_prospekt__prospekt_veteranov"
 
 
 def make_load(as_of, base=0.5, over=None, slots=12) -> LoadPackage:
@@ -25,7 +25,7 @@ def make_load(as_of, base=0.5, over=None, slots=12) -> LoadPackage:
             rows.append(
                 {
                     "segment_id": seg.id,
-                    "interval_start": mock._iso(slot),
+                    "ts": mock._iso(slot),
                     "demand": r * CAP,
                     "departures": 1,
                     "capacity_per_train": CAP,
@@ -104,7 +104,7 @@ def test_none_rows_ignored_and_horizon_only():
     load = make_load(T, base=0.9)
     rows = load.payload
     for r in rows:
-        if r.interval_start >= T + timedelta(minutes=30):
+        if r.ts >= T + timedelta(minutes=30):
             r.r = 5.0
             r.demand = 5.0 * CAP
     rec, m = mock_policy(load, T, PolicyMemory(), FULL)

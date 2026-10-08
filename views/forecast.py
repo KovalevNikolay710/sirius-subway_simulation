@@ -156,7 +156,7 @@ def forecast_tab():
             fcr = ser.filter(ser["kind"] == "forecast")
             fig2 = go.Figure()
             if fcr.height:
-                tx = [to_msk(t) for t in fcr["interval_start"]]
+                tx = [to_msk(t) for t in fcr["ts"]]
                 fig2.add_trace(
                     go.Scatter(
                         x=tx, y=fcr["q90"], mode="lines", line=dict(width=0), showlegend=False
@@ -185,7 +185,7 @@ def forecast_tab():
             if fact.height:
                 fig2.add_trace(
                     go.Scatter(
-                        x=[to_msk(t) for t in fact["interval_start"]],
+                        x=[to_msk(t) for t in fact["ts"]],
                         y=fact["value"],
                         mode="lines",
                         line=dict(color=MUTED, width=1.5),

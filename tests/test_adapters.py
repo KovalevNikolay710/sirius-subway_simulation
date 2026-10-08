@@ -32,7 +32,7 @@ def _rows(as_of=AS_OF, quant=True, tz="Z"):
     for s in load_line().stations:
         for k in range(8):
             t = (as_of + timedelta(minutes=15 * k)).strftime("%Y-%m-%dT%H:%M:%S")
-            row = {"station_id": s.id, "interval_start": t + tz, "q50": 100.0 + k}
+            row = {"station_id": s.id, "ts": t + tz, "q50": 100.0 + k}
             if quant:
                 row |= {"q10": 80.0, "q90": 120.0 + k}
             out.append(row)
@@ -48,7 +48,7 @@ def test_csv_full(tmp_path):
     fc = read_forecast(_csv(tmp_path / "f.csv", _rows()))
     assert fc.data_mode == "real" and fc.payload.status == "ok"
     assert fc.payload.quantiles_ready and fc.payload.as_of == AS_OF
-    assert fc.payload.model_name == "person2"
+    assert fc.payload.rows[0].model_version == "person2"
 
 
 def test_csv_no_quantiles(tmp_path):
@@ -69,7 +69,7 @@ def test_csv_errors(tmp_path):
     rows = [{k: v for k, v in r.items() if k != "q50"} for r in _rows()]
     with pytest.raises(AdapterError, match="q50"):
         read_forecast(_csv(tmp_path / "b.csv", rows))
-    with pytest.raises(AdapterError, match="interval_start"):
+    with pytest.raises(AdapterError, match="ts"):
         read_forecast(_csv(tmp_path / "c.csv", _rows(tz="")))
     with pytest.raises(AdapterError) as e:
         read_forecast(_csv(tmp_path / "d.csv", _rows()[:-1]))
@@ -155,7 +155,7 @@ def test_team_bundle_full(full_dir):
     assert all(x.ok for x in b.values())
     assert b["forecast"].package.data_mode == "real"
     assert b["load"].package.data_mode == "real"
-    assert b["load"].package.payload[0].interval_start == AS_OF
+    assert b["load"].package.payload[0].ts == AS_OF
     assert b["recommendation"].package.payload.source == "person4"
     assert (full_dir / "explanation.txt").read_text(encoding="utf-8").strip()
     assert main(["validate", str(full_dir)]) == 0
@@ -175,7 +175,7 @@ def test_team_bundle_broken_forecast(tmp_path, entries, sources):
 
 def test_no_future(tmp_path, entries, sources, full_dir):
     fc, _, _ = sources
-    t = pl.col("interval_start")
+    t = pl.col("ts")
     bumped = entries.with_columns(
         pl.when(t >= AS_OF)
         .then(pl.col("entries") * 100)
@@ -326,3 +326,19 @@ def test_cli_forecast_as_of(tmp_path, capsys):
         main(["team-bundle", "--out", str(tmp_path / "o"), "--forecast-as-of", "2026-09-28T17:30"])
         == 1
     )
+
+
+def test_csv_team_columns(tmp_path):
+    rows = _rows()
+    for i, r in enumerate(rows):
+        r["baseline"] = 7.5
+        r["is_anomaly"] = i == 1
+        r["model_version"] = "xgb_7"
+        r["horizon_min"] = 15 * (i % 8 + 1)
+    fc = read_forecast(_csv(tmp_path / "f.csv", rows))
+    r0, r1 = fc.payload.rows[0], fc.payload.rows[1]
+    assert (r0.baseline, r0.is_anomaly, r0.model_version) == (7.5, False, "xgb_7")
+    assert r1.is_anomaly
+    rows[3]["horizon_min"] = 90
+    with pytest.raises(AdapterError, match="row 3"):
+        read_forecast(_csv(tmp_path / "g.csv", rows))

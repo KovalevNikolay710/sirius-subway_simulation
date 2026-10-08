@@ -101,7 +101,7 @@ def _thresholds() -> tuple[float, float]:
 def segment_view(load_pkg: LoadPackage, at: datetime) -> pl.DataFrame:
     line = load_line()
     r_off, r_on = _thresholds()
-    at_rows = {r.segment_id: r for r in load_pkg.payload if r.interval_start == at}
+    at_rows = {r.segment_id: r for r in load_pkg.payload if r.ts == at}
     out = []
     for s in line.segments:
         row = at_rows.get(s.id)
@@ -141,7 +141,7 @@ def station_series(
     station_id: str,
 ) -> pl.DataFrame:
     schema = {
-        "interval_start": pl.Datetime("us", "UTC"),
+        "ts": pl.Datetime("us", "UTC"),
         "kind": pl.String,
         "value": pl.Float64,
         "q10": pl.Float64,
@@ -151,11 +151,11 @@ def station_series(
     cutoff = forecast_pkg.payload.as_of if forecast_pkg else None
     if entries_pkg:
         for r in entries_pkg.payload:
-            if r.station_id != station_id or (cutoff and r.interval_start >= cutoff):
+            if r.station_id != station_id or (cutoff and r.ts >= cutoff):
                 continue
             rows.append(
                 {
-                    "interval_start": r.interval_start,
+                    "ts": r.ts,
                     "kind": "fact",
                     "value": r.entries,
                     "q10": None,
@@ -167,14 +167,14 @@ def station_series(
             if r.station_id == station_id:
                 rows.append(
                     {
-                        "interval_start": r.interval_start,
+                        "ts": r.ts,
                         "kind": "forecast",
                         "value": r.q50,
                         "q10": r.q10,
                         "q90": r.q90,
                     }
                 )
-    return pl.DataFrame(rows, schema=schema).sort("interval_start")
+    return pl.DataFrame(rows, schema=schema).sort("ts")
 
 
 def action_card(rec_pkg: Recommendation) -> dict[str, Any]:
@@ -338,7 +338,7 @@ class RecList:
 
 def load_recommendations(run_dir: Path | str, single: PackageResult | None = None) -> RecList:
     """All recommendations of a run: `recommendations.jsonl` (one Recommendation package per line,
-    same v0.1 contract) plus `recommendation.json` if its id is not in the list. Bad lines are
+    same v0.2 contract) plus `recommendation.json` if its id is not in the list. Bad lines are
     skipped and reported, never raised."""
     d = Path(run_dir)
     items: list[Recommendation] = []
@@ -380,9 +380,7 @@ def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str,
     if load_pkg is None:
         return None
     p = rec.payload
-    rows = sorted(
-        (r for r in load_pkg.payload if r.segment_id == p.target), key=lambda r: r.interval_start
-    )
+    rows = sorted((r for r in load_pkg.payload if r.segment_id == p.target), key=lambda r: r.ts)
     if not rows:
         return None
     r_off, r_on = _thresholds()
@@ -391,15 +389,15 @@ def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str,
     top = max((r.r or 0.0 for r in known), default=0.0)
     return {
         "y_max": max(0.1, math.ceil(round(top * 1.1 * 10, 6)) / 10),
-        "times": [f"{to_msk(r.interval_start):%H:%M}" for r in rows],
+        "times": [f"{to_msk(r.ts):%H:%M}" for r in rows],
         "r": [r.r for r in rows],
-        "in_window": [p.start <= r.interval_start < p.end for r in rows],
+        "in_window": [p.start <= r.ts < p.end for r in rows],
         "r_on": r_on,
         "r_off": r_off,
         "peak": None
         if peak is None
         else {
-            "time": f"{to_msk(peak.interval_start):%H:%M}",
+            "time": f"{to_msk(peak.ts):%H:%M}",
             "r": peak.r,
             "demand": peak.demand,
             "departures": peak.departures,

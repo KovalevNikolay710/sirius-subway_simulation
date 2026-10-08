@@ -49,7 +49,7 @@ def test_stepwise_baseline_equals_single_run(fx, result):
     import polars as pl
 
     d = date.fromisoformat(spec["date"])
-    day = fx.filter(pl.col("interval_start").dt.date() == d)
+    day = fx.filter(pl.col("ts").dt.date() == d)
     truth = apply_scenario(day, spec)
     params, demand, trips, _, _ = build_day(truth, truth, LINE, load_od_params(), ASS)
     one = run(new_state(params, [], 0.0, trips), params, demand, DAY_END_MIN)

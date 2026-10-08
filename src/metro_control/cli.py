@@ -94,15 +94,15 @@ def _load_entries(args: argparse.Namespace) -> int:
         return 1
     write_parquet(df, args.out)
     days = (
-        df.select(pl.col("interval_start").dt.convert_time_zone("Europe/Moscow"))
-        .with_columns((pl.col("interval_start") - pl.duration(hours=3)).dt.date().alias("d"))["d"]
+        df.select(pl.col("ts").dt.convert_time_zone("Europe/Moscow"))
+        .with_columns((pl.col("ts") - pl.duration(hours=3)).dt.date().alias("d"))["d"]
         .n_unique()
     )
     print(f"days loaded: {days}")
     print(f"rows: {df.height}")
     for dt, n in df.group_by("day_type").len().sort("day_type").iter_rows():
         print(f"  {dt}: {n}")
-    lo, hi = df["interval_start"].min(), df["interval_start"].max()
+    lo, hi = df["ts"].min(), df["ts"].max()
     print(f"first: {lo.astimezone(MSK):%Y-%m-%d %H:%M} MSK")
     print(f"last: {hi.astimezone(MSK):%Y-%m-%d %H:%M} MSK")
     print(f"wrote {args.out}")
@@ -153,7 +153,7 @@ def _sim_day(args: argparse.Namespace) -> int:
         return 1
     d = date.fromisoformat(args.date)
     df = pl.read_parquet(path)
-    msk = df["interval_start"].dt.convert_time_zone("Europe/Moscow") - pl.duration(hours=3)
+    msk = df["ts"].dt.convert_time_zone("Europe/Moscow") - pl.duration(hours=3)
     day = df.filter(msk.dt.date() == d)
     if day.height == 0:
         print(f"error: no rows for {d}", file=sys.stderr)
@@ -249,7 +249,7 @@ def _mock_bundle(args: argparse.Namespace) -> int:
         except (pl.exceptions.PolarsError, OSError) as e:
             print(f"error: cannot read {path}: {e}".splitlines()[0], file=sys.stderr)
             return 1
-        need = {"station_id", "interval_start", "day_type", "entries"}
+        need = {"station_id", "ts", "day_type", "entries"}
         if need - set(entries.columns):
             print(
                 f"error: {path} lacks columns {sorted(need - set(entries.columns))}",
@@ -290,7 +290,7 @@ def _team_bundle(args: argparse.Namespace) -> int:
             raise ValueError(f"entries parquet not found: {path}")
         if path.is_file():
             entries = pl.read_parquet(path)
-            need = {"station_id", "interval_start", "day_type", "entries"}
+            need = {"station_id", "ts", "day_type", "entries"}
             if need - set(entries.columns):
                 raise ValueError(f"{path} lacks columns {sorted(need - set(entries.columns))}")
         else:
@@ -331,8 +331,8 @@ def build_parser() -> argparse.ArgumentParser:
     val = sub.add_parser("validate", help="validate contract package files or directories")
     val.add_argument("paths", nargs="+")
     val.set_defaults(func=_validate)
-    exp = sub.add_parser("export-schemas", help="write JSON Schemas for contracts v0.1")
-    exp.add_argument("--out", default=str(PROJECT_ROOT / "contracts" / "v0_1" / "schemas"))
+    exp = sub.add_parser("export-schemas", help="write JSON Schemas for contracts v0.2")
+    exp.add_argument("--out", default=str(PROJECT_ROOT / "contracts" / "v0_2" / "schemas"))
     exp.set_defaults(func=_export)
     le = sub.add_parser("load-entries", help="load organizer 15-min entries to parquet")
     le.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))

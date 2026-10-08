@@ -74,17 +74,19 @@ def _parse_time(v: Any, name: str) -> datetime:
         try:
             v = datetime.fromisoformat(v.strip())
         except ValueError as e:
-            raise AdapterError(f"{name}: interval_start: not an ISO datetime ({v!r})") from e
+            raise AdapterError(f"{name}: ts: not an ISO datetime ({v!r})") from e
     if not isinstance(v, datetime):
-        raise AdapterError(f"{name}: interval_start: not a datetime ({v!r})")
+        raise AdapterError(f"{name}: ts: not a datetime ({v!r})")
     if v.tzinfo is None:
-        raise AdapterError(f"{name}: interval_start: must be timezone-aware (got {v.isoformat()})")
+        raise AdapterError(f"{name}: ts: must be timezone-aware (got {v.isoformat()})")
     return v.astimezone(UTC)
 
 
 def read_forecast(
     path: Path | str, as_of: datetime | None = None, model_name: str | None = None
 ) -> ForecastPackage:
+    """Read a forecast file. Table input: optional team columns baseline, is_anomaly,
+    model_version, horizon_min; a missing baseline falls back to q50 (placeholder until A1)."""
     p = Path(path)
     suffix = p.suffix.lower()
     try:
@@ -96,34 +98,52 @@ def read_forecast(
             df = pl.read_csv(p) if suffix == ".csv" else pl.read_parquet(p)
         except (pl.exceptions.PolarsError, OSError) as e:
             raise AdapterError(f"{p.name}: cannot read table: {e}".splitlines()[0]) from e
-        need = ["station_id", "interval_start", "q50"]
+        need = ["station_id", "ts", "q50"]
         miss = [c for c in need if c not in df.columns]
         if miss:
             raise AdapterError(f"{p.name}: missing column {', '.join(miss)}")
         has_q = "q10" in df.columns and "q90" in df.columns
         rows = []
+        mv = model_name or "person2"
+        given_h: list[int | None] = []
         for r in df.iter_rows(named=True):
             if r["q50"] is None:
                 raise AdapterError(f"{p.name}: q50: empty value")
-            t = _parse_time(r["interval_start"], p.name)
+            t = _parse_time(r["ts"], p.name)
             q50 = _num(r["q50"], "q50", p.name)
             q10 = _num(r["q10"], "q10", p.name) if has_q and r["q10"] is not None else q50
             q90 = _num(r["q90"], "q90", p.name) if has_q and r["q90"] is not None else q50
             rows.append(
                 {
                     "station_id": r["station_id"],
-                    "interval_start": _iso(t),
+                    "ts": _iso(t),
                     "q10": q10,
                     "q50": q50,
                     "q90": q90,
+                    "baseline": _num(r["baseline"], "baseline", p.name)
+                    if r.get("baseline") is not None
+                    else q50,
+                    "is_anomaly": bool(r["is_anomaly"])
+                    if r.get("is_anomaly") is not None
+                    else False,
+                    "model_version": str(r["model_version"]) if r.get("model_version") else mv,
                 }
             )
+            h = r.get("horizon_min")
+            given_h.append(None if h is None else int(_num(h, "horizon_min", p.name)))
         if not rows:
             raise AdapterError(f"{p.name}: no rows")
-        start = min(datetime.fromisoformat(r["interval_start"]) for r in rows)
+        start = min(datetime.fromisoformat(r["ts"]) for r in rows)
         as_of = (as_of or start).astimezone(UTC)
+        for i, r in enumerate(rows):
+            h = int((datetime.fromisoformat(r["ts"]) - as_of).total_seconds() // 60) + 15
+            if given_h[i] is not None and given_h[i] != h:
+                raise AdapterError(
+                    f"{p.name}: row {i}: horizon_min {given_h[i]} != ts - as_of + 15 min ({h})"
+                )
+            r["horizon_min"] = h
         env = {
-            "schema_version": "0.1",
+            "schema_version": "0.2",
             "kind": "forecast",
             "run_id": f"person2-{_iso(as_of)}",
             "generated_at": _iso(as_of),
@@ -131,7 +151,6 @@ def read_forecast(
             "manifest": {"source": f"person2: {p.name}", "checksum": _checksum(p)},
             "payload": {
                 "as_of": _iso(as_of),
-                "model_name": model_name or "person2",
                 "status": "ok",
                 "quantiles_ready": has_q,
                 "rows": rows,
@@ -161,7 +180,7 @@ def read_recommendation(path: Path | str) -> Recommendation:
                 raise AdapterError(f"{p.name}: as_of: must be timezone-aware (got {as_of})")
             gen = _iso(parsed)
             data = {
-                "schema_version": "0.1",
+                "schema_version": "0.2",
                 "kind": "recommendation",
                 "run_id": f"person4-{gen}",
                 "generated_at": gen,
@@ -234,7 +253,7 @@ def build_team_bundle(
         as_of = as_of_default or mock.default_as_of(entries)
     mock.build_mock_bundle(out, entries, as_of, surge=surge)
     if fc is not None:
-        history = entries.filter(pl.col("interval_start") < as_of)
+        history = entries.filter(pl.col("ts") < as_of)
         line = load_line()
         dtype = day_type(mock._msk_service_date(as_of), load_holidays())
         try:
