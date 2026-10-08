@@ -10,7 +10,8 @@
 #   SLICE_CONFIRM=1 scripts/slice_loop.sh       # old mode: ask y/n/feedback before each commit
 #   SLICE_PUSH=0 scripts/slice_loop.sh          # commit and merge locally, do not push
 #
-# The loop stops (and notifies) when the gate stays red after SLICE_FIX_TRIES fix rounds,
+# The loop stops (and notifies) when the gate stays red after SLICE_FIX_TRIES fix rounds, after a
+# slice whose backlog row is tagged [review] (review checkpoint),
 # when the session writes a line starting with NEEDS_USER:, or when dev is not clean after merge.
 # A failed push only warns: commits stay on local dev and go out with the next push.
 # Progress: one terminal line per tool call (subagent steps indented); raw events go to
@@ -81,8 +82,8 @@ next_slice() {
   # A slice left `doing` (interrupted run) comes first, then the first `todo`.
   # IDs may carry a letter suffix (S4a, S8a); `blocked` rows are skipped.
   local row
-  row=$(grep -m1 -E '^\| S[0-9]+[a-z]? \| doing \|' docs/backlog.md ||
-    grep -m1 -E '^\| S[0-9]+[a-z]? \| todo \|' docs/backlog.md || true)
+  row=$(grep -m1 -E '^\| [A-Z][0-9]+[a-z]? \| doing \|' docs/backlog.md ||
+    grep -m1 -E '^\| [A-Z][0-9]+[a-z]? \| todo \|' docs/backlog.md || true)
   awk -F'|' '{gsub(/ /, "", $2); print $2}' <<<"$row"
 }
 
@@ -165,7 +166,7 @@ push_dev() {
 
 # Resume after an interrupted run (Ctrl+C, shutdown): the loop may have stopped on a slice branch.
 start_branch=$(git branch --show-current)
-if [[ "$start_branch" == feature/S* ]]; then
+if [[ "$start_branch" == feature/[A-Z][0-9]* ]]; then
   if [[ -n "$(git status --porcelain)" ]]; then
     # Mid-slice: stay here; next_slice sees the `doing` row and /next-slice resumes on this branch.
     echo "Resuming interrupted slice on $start_branch (uncommitted work kept)."
@@ -251,5 +252,12 @@ $GATE_OUT"
     fi
   else
     notify "metro-control: $slice merged into local dev"
+  fi
+
+  # Review checkpoint: a backlog row tagged [review] stops the loop after its merge and push.
+  if grep -qE "^\| $slice \|.*\[review\]" docs/backlog.md; then
+    notify "metro-control: $slice done, waiting for your review"
+    echo "Review checkpoint after $slice. Look at the result, then start the loop again." >&2
+    exit 0
   fi
 done
