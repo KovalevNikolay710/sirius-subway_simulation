@@ -191,3 +191,104 @@ def action_card(rec_pkg: Recommendation) -> dict[str, Any]:
         "reason": p.reason,
         "is_mock": rec_pkg.data_mode == "mock" or p.source == "mock",
     }
+
+
+KIND_NAMES_RU = {
+    "station_entries": "Факт входов",
+    "forecast": "Прогноз",
+    "load": "Загрузка перегонов",
+    "recommendation": "Рекомендация",
+}
+SOURCE_NAMES_RU = {
+    "forecast": "Прогноз человека 2",
+    "recommendation": "Рекомендация человека 4",
+    "explanation": "Объяснение человека 4",
+}
+
+
+@dataclass(frozen=True)
+class StatusLine:
+    level: str  # ok | info | warning | error
+    text: str
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8").strip() or None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def source_statuses(run_dir: Path | str, bundle: dict[str, PackageResult]) -> list[StatusLine]:
+    d = Path(run_dir)
+    out: list[StatusLine] = []
+    for kind, res in bundle.items():
+        name = KIND_NAMES_RU.get(kind, kind)
+        fname = FILES[kind][0] if kind in FILES else kind
+        if not res.ok:
+            missing = (res.reason or "").endswith("file not found")
+            if missing and kind == "forecast":
+                text = (
+                    "Прогноз: нет файла forecast.json — "
+                    "график прогноза и загрузка перегонов недоступны"
+                )
+            elif missing and kind == "recommendation":
+                text = "Рекомендация: нет файла recommendation.json — карточка действия недоступна"
+            elif missing:
+                text = f"{name}: нет файла {fname}"
+            else:
+                text = f"{name}: пакет повреждён — {res.reason}"
+            out.append(StatusLine("error", text))
+        elif res.package.data_mode == "mock":
+            out.append(StatusLine("warning", f"{name}: mock"))
+        elif kind == "forecast" and res.package.payload.status == "degraded":
+            out.append(StatusLine("warning", f"{name}: данные деградированы (status degraded)"))
+        else:
+            out.append(StatusLine("ok", f"{name}: ok ({res.package.data_mode})"))
+    if not _read_text(d / "explanation.txt"):
+        out.append(
+            StatusLine(
+                "warning",
+                "Объяснение: нет текста от человека 4 — показана причина из рекомендации",
+            )
+        )
+    sp = d / "sources.json"
+    if sp.is_file():
+        try:
+            src = json.loads(sp.read_text(encoding="utf-8"))
+            if not isinstance(src, dict):
+                raise ValueError("object expected")
+        except (OSError, ValueError) as e:
+            out.append(
+                StatusLine("warning", f"Источники: sources.json не читается — {e}".splitlines()[0])
+            )
+            src = {}
+        for kind, name in SOURCE_NAMES_RU.items():
+            s = src.get(kind)
+            if not isinstance(s, dict):
+                continue
+            tail = "" if kind == "explanation" else "; показан mock"
+            if s.get("status") == "error":
+                out.append(StatusLine("warning", f"{name}: ошибка — {s.get('reason')}{tail}"))
+            elif s.get("status") == "missing" and kind != "explanation":
+                out.append(StatusLine("warning", f"{name}: не передан{tail}"))
+    fc, rec = bundle.get("forecast"), bundle.get("recommendation")
+    if fc and rec and fc.ok and rec.ok and fc.package.payload.as_of != rec.package.payload.as_of:
+        a, b = to_msk(fc.package.payload.as_of), to_msk(rec.package.payload.as_of)
+        out.append(
+            StatusLine(
+                "warning",
+                f"Время не совпадает: прогноз на {a:%d.%m %H:%M}, "
+                f"рекомендация на {b:%d.%m %H:%M} МСК",
+            )
+        )
+    return out
+
+
+def explanation_text(run_dir: Path | str, rec: Recommendation) -> tuple[str, str]:
+    text = (
+        _read_text(Path(run_dir) / "explanation.txt") if rec.payload.source == "person4" else None
+    )
+    if text:
+        return text, "person4"
+    return rec.payload.reason, "reason"

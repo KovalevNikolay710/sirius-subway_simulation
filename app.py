@@ -17,8 +17,10 @@ from metro_control.screen import (
     BAND_COLORS,
     BAND_LABELS_RU,
     action_card,
+    explanation_text,
     load_bundle,
     segment_view,
+    source_statuses,
     station_series,
 )
 from metro_control.timeline import (
@@ -55,17 +57,14 @@ bundle = load_bundle(run_dir)
 with st.sidebar:
     st.subheader("Пакеты данных")
     st.caption(str(run_dir))
-    for kind, res in bundle.items():
-        if not res.ok:
-            st.error(f"{kind}: ошибка — {res.reason}")
-        elif res.package.data_mode == "mock":
-            st.warning(f"{kind}: mock")
-        else:
-            st.success(f"{kind}: ok ({res.package.data_mode})")
+    for line_ in source_statuses(run_dir, bundle):
+        {"ok": st.success, "info": st.info, "warning": st.warning, "error": st.error}[line_.level](
+            line_.text
+        )
 
-for res in bundle.values():
-    if not res.ok:
-        st.warning(res.reason)
+for line_ in source_statuses(run_dir, bundle):
+    if line_.level == "error":
+        st.error(line_.text)
 
 load_pkg = bundle["load"].package if bundle["load"].ok else None
 fc_pkg = bundle["forecast"].package if bundle["forecast"].ok else None
@@ -160,7 +159,11 @@ def forecast_tab():
                 st.markdown(f"### {card['title']}")
                 st.write(f"**Цель:** {card['target']}")
                 st.write(f"**Окно:** {card['window']} МСК")
-                st.write(card["reason"])
+                text, origin = explanation_text(run_dir, rec_pkg)
+                st.write(text)
+                st.caption(
+                    "Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации"
+                )
 
         st.subheader("Вход на станции")
         sid = st.selectbox(
