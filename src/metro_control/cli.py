@@ -132,6 +132,43 @@ def _od_sanity(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sim_day(args: argparse.Namespace) -> int:
+    import time
+    from datetime import date
+
+    import polars as pl
+
+    from metro_control.dayrun import load_assumption_items, simulate_day
+    from metro_control.line import load_line
+    from metro_control.od import load_od_params
+    from metro_control.sim import onboard, waiting
+
+    path = Path(args.entries)
+    if not path.is_file():
+        print(f"error: entries parquet not found: {path}", file=sys.stderr)
+        return 1
+    d = date.fromisoformat(args.date)
+    df = pl.read_parquet(path)
+    msk = df["interval_start"].dt.convert_time_zone("Europe/Moscow") - pl.duration(hours=3)
+    day = df.filter(msk.dt.date() == d)
+    if day.height == 0:
+        print(f"error: no rows for {d}", file=sys.stderr)
+        return 1
+    t0 = time.perf_counter()
+    st, params = simulate_day(day, day, load_line(), load_od_params(), load_assumption_items())
+    wall = time.perf_counter() - t0
+    max_load = max((x.load_after for x in st.log), default=0.0)
+    print(f"trips: {sum(1 for t in st.trains.values() if t.one_way)}")
+    print(f"entered: {st.entered:.0f}")
+    print(f"alighted: {st.alighted:.0f}")
+    print(f"waiting at end: {waiting(st):.0f}")
+    print(f"onboard: {onboard(st):.0f}")
+    print(f"denied (refusals per train, not people): {st.denied:.0f}")
+    print(f"max load/capacity: {max_load / params.capacity:.3f}")
+    print(f"wall: {wall:.1f} s")
+    return 0
+
+
 def _mock_bundle(args: argparse.Namespace) -> int:
     from datetime import datetime
 
@@ -192,6 +229,10 @@ def build_parser() -> argparse.ArgumentParser:
     od = sub.add_parser("od-sanity", help="OD assignment sanity report vs planned capacity")
     od.add_argument("--entries", default="data/processed/station_entries.parquet")
     od.set_defaults(func=_od_sanity)
+    sd = sub.add_parser("sim-day", help="simulate one service day on the baseline timetable")
+    sd.add_argument("--date", required=True)
+    sd.add_argument("--entries", default="data/processed/station_entries.parquet")
+    sd.set_defaults(func=_sim_day)
     mb = sub.add_parser("mock-bundle", help="write a mock forecast/load/recommendation bundle")
     mb.add_argument("--out", default="runs/demo")
     mb.add_argument("--entries", default=None)
