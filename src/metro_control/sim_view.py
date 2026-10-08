@@ -182,7 +182,7 @@ def load_payload(
             demand[d].append([getattr(rows.get((keys[d], t)), "demand", None) for t in slots])
     where = {sg[d]: {"seg": i, "dir": d} for i, sg in enumerate(segs) for d in DIRS}
     out_recs = []
-    for n, rec in enumerate(recs or [], 1):
+    for n, rec in enumerate([r for r in recs or [] if r.get("action") != "none"], 1):
         tid = str(rec.get("target_id", ""))
         target = where.get(tid) or ({"station": order.index(tid)} if tid in order else None)
         out_recs.append(

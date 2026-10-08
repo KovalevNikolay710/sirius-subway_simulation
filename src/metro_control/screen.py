@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -369,6 +370,11 @@ def explanation_for(run_dir: Path | str, rec: Recommendation) -> tuple[str, str]
     return explanation_text(run_dir, rec)
 
 
+def actionable(items: list[Recommendation]) -> list[Recommendation]:
+    """Recommendations that ask for an action (drops `none`)."""
+    return [r for r in items if r.payload.action != "none"]
+
+
 def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str, Any] | None:
     """What backs a segment recommendation in the load package: r per slot, the window, the peak."""
     if load_pkg is None:
@@ -382,7 +388,9 @@ def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str,
     r_off, r_on = _thresholds()
     known = [r for r in rows if r.r is not None]
     peak = max(known, key=lambda r: r.r or 0.0) if known else None
+    top = max((r.r or 0.0 for r in known), default=0.0)
     return {
+        "y_max": max(0.1, math.ceil(round(top * 1.1 * 10, 6)) / 10),
         "times": [f"{to_msk(r.interval_start):%H:%M}" for r in rows],
         "r": [r.r for r in rows],
         "in_window": [p.start <= r.interval_start < p.end for r in rows],
