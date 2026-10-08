@@ -104,13 +104,14 @@ def pairs_for(day_type: str, line: LineRef) -> list[int]:
     return [int(x) for x in line.params[key].value]
 
 
-def simulate_day(
+def build_day(
     entries_day: pl.DataFrame,
     attraction: pl.DataFrame,
     line: LineRef,
     od_params: OdParams,
     assumptions: dict[str, Any],
-) -> tuple[SimState, SimParams]:
+) -> tuple[SimParams, list[Arrival], list[tuple[str, str, float]], datetime, str]:
+    """Demand, baseline trips, service origin and day type of one service day."""
     types = entries_day["day_type"].unique().to_list()
     if len(types) != 1:
         raise ValueError(f"expected one day_type, got {sorted(types)}")
@@ -124,5 +125,16 @@ def simulate_day(
     step = float(assumptions["sim_arrival_step_min"]["value"])
     demand = arrivals_from_od(slots, od, origin, params.stations, step)
     trips = baseline_trips(pairs_for(types[0], line))
+    return params, demand, trips, origin, types[0]
+
+
+def simulate_day(
+    entries_day: pl.DataFrame,
+    attraction: pl.DataFrame,
+    line: LineRef,
+    od_params: OdParams,
+    assumptions: dict[str, Any],
+) -> tuple[SimState, SimParams]:
+    params, demand, trips, _, _ = build_day(entries_day, attraction, line, od_params, assumptions)
     state = new_state(params, [], 0.0, trips)
     return run(state, params, demand, DAY_END_MIN), params

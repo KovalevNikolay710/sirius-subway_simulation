@@ -133,6 +133,48 @@
    "value": 60,
    "unit": "min",
    "source": "assumption: shift_peak pulls a trip from this far after the window end"
+  },
+  "trip_km": {
+   "value": 27.48,
+   "unit": "km per one-way trip",
+   "source": "derived: MO-1 Q3 2026 2 041 527 train-km / 74 299 trains, docs/data_notes.md:36"
+  },
+  "scenarios": {
+   "value": {
+    "quiet_weekend": {
+     "date": "2026-09-27",
+     "overlay": null,
+     "announced": false
+    },
+    "rail_surge": {
+     "date": "2026-09-30",
+     "announced": true,
+     "overlay": {
+      "type": "surge",
+      "factor": 5.0,
+      "stations": [
+       "ploshchad_vosstaniya",
+       "ploshchad_lenina",
+       "pushkinskaya"
+      ],
+      "start_msk": "15:00",
+      "end_msk": "17:00"
+     }
+    },
+    "snowfall": {
+     "date": "2026-02-10",
+     "announced": true,
+     "overlay": {
+      "type": "shift",
+      "shift_min": 30,
+      "start_msk": "06:00",
+      "end_msk": "11:00"
+     }
+    }
+   },
+   "unit": "scenario specs",
+   "source": "assumption: demo event, uncalibrated",
+   "version": "0.1"
   }
  }
 }
