@@ -17,6 +17,8 @@ from metro_control.dayrun import DAY_END_MIN, build_day, minutes_to_utc
 from metro_control.line import LineRef
 from metro_control.od import OdParams
 from metro_control.sim import SimParams, SimState, new_state, pending_wait_pax_min, run, waiting
+from metro_control.timeline import Timeline, snapshot
+from metro_control.timeline import dump as dump_timeline
 
 SLOT_MIN = 15
 HORIZON_MIN = 120.0
@@ -110,6 +112,7 @@ class CompareResult:
     state_packages: dict[str, SimulationState]
     manifest: dict[str, Any]
     outcomes: dict[str, int] = field(default_factory=dict)
+    timeline: Timeline | None = None
 
 
 def _iso(dt: datetime) -> str:
@@ -202,7 +205,10 @@ def compare(
     others = entries.filter(utc_day != d)
     history_all = pl.concat([others, truth.select(others.columns)]).sort("interval_start")
     init = new_state(params, [], 0.0, trips)
-    baseline = run(init, params, demand, DAY_END_MIN)
+    n_slots = int(DAY_END_MIN) // SLOT_MIN
+    frames: dict[str, list[dict[str, Any]]] = {"baseline": [], "policy": []}
+    baseline = init
+    b_mark = 0
 
     ctx = executor.ExecContext(origin, dtype, line, assumptions)
     ex = executor.new_exec_state(line)
@@ -210,10 +216,17 @@ def compare(
     st = new_state(params, [], 0.0, trips)
     actions: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
-    for k in range(int(DAY_END_MIN) // SLOT_MIN):
+    p_mark = 0
+    for k in range(n_slots + 1):
         t = k * float(SLOT_MIN)
         as_of = minutes_to_utc(t, origin)
+        baseline = run(baseline, params, demand, t)
         st = run(st, params, demand, t)
+        frames["baseline"].append(snapshot(baseline, params, b_mark, as_of))
+        frames["policy"].append(snapshot(st, params, p_mark, as_of))
+        b_mark, p_mark = len(baseline.log), len(st.log)
+        if k == n_slots:
+            break
         hist = history_all.filter(pl.col("interval_start") < as_of)
         sg, sw = _surge_for(spec, d, as_of)
         rec, mem = policy.recommend_at(
@@ -237,7 +250,6 @@ def compare(
                     "train_ids": list(out.train_ids),
                 }
             )
-    st = run(st, params, demand, DAY_END_MIN)
 
     if abs(baseline.entered - st.entered) > 1e-6 * max(1.0, baseline.entered):
         raise RuntimeError("baseline and policy runs saw different demand")
@@ -286,6 +298,14 @@ def compare(
         pk,
         manifest,
         outcomes=counts,
+        timeline=Timeline(
+            run_id=run_id,
+            scenario=scenario,
+            date=d.isoformat(),
+            capacity=params.capacity,
+            stations=list(params.stations),
+            frames=frames,
+        ),
     )
 
 
@@ -304,5 +324,7 @@ def write_run(result: CompareResult, out_dir: Path) -> Path:
     )
     for k, pkg in result.state_packages.items():
         dump(f"state_{k}.json", pkg.model_dump_json(indent=1) + "\n")
+    if result.timeline is not None:
+        dump("timeline.json", dump_timeline(result.timeline))
     dump("manifest.json", json.dumps(result.manifest, indent=1, sort_keys=True) + "\n")
     return run_dir
