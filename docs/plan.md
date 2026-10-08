@@ -83,7 +83,7 @@
 - Подтверждение коммита пользователем снято: за историей следит супервизор. `scripts/slice_loop.sh` сам гоняет pytest + ruff (до 2 раундов исправлений), даёт сессии OK на коммит и слияние в `dev`, затем `git push origin dev`.
   Loop останавливается и шлёт уведомление при красных проверках, при вопросе `NEEDS_USER:` или при грязном `dev`. `SLICE_CONFIRM=1` возвращает старый режим y/n.
 - Remote `origin` = https://github.com/KovalevNikolay710/sirius-subway_simulation.git. Пушится `dev`; `master` — только по просьбе пользователя. Push идёт через git, а не через GitHub MCP: MCP работает через API и локальную историю не пушит.
-- Макет экрана в Figma (срез S8a) делает оркестратор сам через MCP-сервер `figma` (`/next-slice`, шаг 1a), до S9: по нему строятся S9 и S10. Файл Figma: _URL даёт пользователь_.
+- Макет экрана в Figma (срез S8a) делает оркестратор сам через MCP-сервер `figma` (`/next-slice`, шаг 1a), до S9: по нему строятся S9 и S10. Файл Figma: оркестратор создаёт сам («metro-control — экран диспетчера») и записывает сюда URL.
 
 ## Срезы (порядок)
 - S0 Харнесс + каркас (uv init, pyproject с CLI `metro-control`, git init, .gitignore, перенос файлов, CLAUDE.md, backlog, хук, команда).
