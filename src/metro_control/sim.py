@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import heapq
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -63,9 +64,11 @@ class Train:
     station_idx: int
     direction: str
     onboard: dict[str, float] = field(default_factory=dict)
+    in_service: bool = True
+    one_way: bool = False  # trip train: leaves service at the far terminal
 
 
-@dataclass
+@dataclass(frozen=True)
 class StopLog:
     t: float
     train_id: str
@@ -84,7 +87,7 @@ class SimState:
 
     t: float
     trains: dict[str, Train]
-    queues: dict[tuple[str, str], list[Cohort]]
+    queues: dict[tuple[str, str], deque[Cohort]]
     events: list[tuple[float, int, str, int, str]]  # (t, seq, train_id, station_idx, dir)
     seq: int
     entered: float
@@ -102,13 +105,14 @@ def new_state(
     params: SimParams,
     trains: list[tuple[str, str, str, float]],
     t0: float = 0.0,
+    trips: Sequence[tuple[str, str, float]] = (),
 ) -> SimState:
     if not params.stations:
         raise ValueError("stations: empty")
     st = SimState(
         t=t0,
         trains={},
-        queues={(s, d): [] for s in params.stations for d in (NORTH, SOUTH)},
+        queues={(s, d): deque() for s in params.stations for d in (NORTH, SOUTH)},
         events=[],
         seq=0,
         entered=0.0,
@@ -129,6 +133,17 @@ def new_state(
         idx = params.stations.index(station)
         st.trains[train_id] = Train(train_id, idx, direction)
         heapq.heappush(st.events, (t_first, st.seq, train_id, idx, direction))
+        st.seq += 1
+    for train_id, direction, t_depart in trips:
+        if train_id in st.trains:
+            raise ValueError(f"train_id: duplicate {train_id}")
+        if direction not in (NORTH, SOUTH):
+            raise ValueError("direction: must be north or south")
+        if t_depart < t0:
+            raise ValueError("t_depart: before t0")
+        idx = 0 if direction == NORTH else len(params.stations) - 1
+        st.trains[train_id] = Train(train_id, idx, direction, one_way=True)
+        heapq.heappush(st.events, (t_depart, st.seq, train_id, idx, direction))
         st.seq += 1
     return st
 
@@ -163,7 +178,7 @@ def _process_stop(state: SimState, params: SimParams, ev: tuple[float, int, str,
         room = params.capacity - load
         if total <= room:
             moved = dict(c.by_dest)
-            q.pop(0)
+            q.popleft()
         else:
             frac = room / total
             moved = {d: v * frac for d, v in c.by_dest.items()}
@@ -183,6 +198,9 @@ def _process_stop(state: SimState, params: SimParams, ev: tuple[float, int, str,
     )
 
     n = len(params.stations)
+    if train.one_way and (idx == n - 1 if direction == NORTH else idx == 0):
+        train.in_service = False
+        return
     if direction == NORTH and idx + 1 < n:
         nxt = (t + params.dwell_min + params.run_min[idx], idx + 1, NORTH)
     elif direction == SOUTH and idx - 1 >= 0:
@@ -197,7 +215,12 @@ def _process_stop(state: SimState, params: SimParams, ev: tuple[float, int, str,
 def run(state: SimState, params: SimParams, demand: Sequence[Arrival], until: float) -> SimState:
     if until < state.t:
         raise ValueError("until: before state.t")
-    st = copy.deepcopy(state)
+    log = list(state.log)
+    shallow = copy.copy(state)
+    shallow.log = []
+    st = copy.deepcopy(shallow)
+    st.log = log
+    st.queues = {k: deque(v) for k, v in st.queues.items()}
     arrivals = sorted((a for a in demand if st.t <= a.t < until), key=lambda a: a.t)
     i = 0
     while True:

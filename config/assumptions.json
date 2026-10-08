@@ -93,6 +93,26 @@
    },
    "unit": "ratio per station",
    "source": "mock, demo only: multiplies mock q50 entries so the demo shows all three load bands"
+  },
+  "sim_dwell_min": {
+   "value": 0.5,
+   "unit": "min",
+   "source": "assumption, uncalibrated"
+  },
+  "sim_turnback_min": {
+   "value": 3.0,
+   "unit": "min",
+   "source": "assumption, uncalibrated"
+  },
+  "sim_run_min_rule": {
+   "value": "(cycle_min - 2*turnback)/(2*(n-1)) - dwell",
+   "unit": "formula",
+   "source": "derived: uniform run time per segment, no per-segment data; assumption, uncalibrated"
+  },
+  "sim_arrival_step_min": {
+   "value": 1.0,
+   "unit": "min",
+   "source": "assumption: slot demand spread evenly over 1-min arrival steps"
   }
  }
 }

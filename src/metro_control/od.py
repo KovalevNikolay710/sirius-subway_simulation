@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -86,32 +87,26 @@ def _station_sums(df: pl.DataFrame, mask: np.ndarray, index: dict[str, int]) -> 
     return out
 
 
-def segment_demand(
+def slot_od(
     entries: pl.DataFrame,
     attraction_entries: pl.DataFrame,
     line: LineRef,
     params: OdParams,
-) -> pl.DataFrame:
-    """Static directed segment demand per slot (pax per 15-min slot).
+) -> tuple[list[datetime], np.ndarray]:
+    """Per-slot OD matrices (pax per slot), od[s, i, j] = origins[s, i] * shares[i, j].
 
     Origins of a slot = entries x transfer factor. Attraction of station j comes from
     `attraction_entries` (caller decides: same day = truth, historical = forecast-time),
     multiplied by the transfer factor and mirrored by MSK clock time: a slot in the morning
     period uses evening-period entries and vice versa; other slots use the station's total.
     Attraction aggregates all rows of `attraction_entries` in the clock period regardless
-    of date. All trips of a slot load segments in that same slot (static); stations missing
-    in a slot count as 0 entries.
+    of date. Stations missing in a slot count as 0 entries.
     """
     stations = sorted(line.stations, key=lambda s: s.order)
     index = {s.id: i for i, s in enumerate(stations)}
     n = len(stations)
-    schema = {
-        "segment_id": pl.String,
-        "interval_start": pl.Datetime("us", "UTC"),
-        "demand": pl.Float64,
-    }
     if entries.height == 0:
-        return pl.DataFrame(schema=schema)
+        return [], np.zeros((0, n, n))
     for name, df in (("entries", entries), ("attraction_entries", attraction_entries)):
         if df.height == 0:
             continue
@@ -145,8 +140,7 @@ def segment_demand(
 
     sm = _msk_minutes(pl.DataFrame({"interval_start": slots}))
     kind = np.where((sm >= m0) & (sm < m1), 0, np.where((sm >= e0) & (sm < e1), 1, 2))
-    north = np.zeros((len(slots), n - 1))
-    south = np.zeros_like(north)
+    od = np.zeros((len(slots), n, n))
     for code, name in enumerate(("morning", "evening", "other")):
         sel = kind == code
         if not sel.any():
@@ -157,13 +151,39 @@ def segment_demand(
             if not (a > 0).any():
                 raise ValueError("no attraction data")
         shares = od_shares(a, times, params.beta)
-        nn, ss = assign(o[sel], shares)
-        north[sel], south[sel] = nn, ss
+        od[sel] = o[sel][:, :, None] * shares[None, :, :]
+    return slots.to_list(), od
+
+
+def segment_demand(
+    entries: pl.DataFrame,
+    attraction_entries: pl.DataFrame,
+    line: LineRef,
+    params: OdParams,
+) -> pl.DataFrame:
+    """Static directed segment demand per slot (pax per 15-min slot).
+
+    All trips of a slot load segments in that same slot (static); see `slot_od` for the
+    origin / attraction rules.
+    """
+    n = len(line.stations)
+    schema = {
+        "segment_id": pl.String,
+        "interval_start": pl.Datetime("us", "UTC"),
+        "demand": pl.Float64,
+    }
+    if entries.height == 0:
+        return pl.DataFrame(schema=schema)
+    slot_list, od = slot_od(entries, attraction_entries, line, params)
+    north = np.zeros((len(slot_list), n - 1))
+    south = np.zeros_like(north)
+    for k in range(n - 1):
+        north[:, k] = od[:, : k + 1, k + 1 :].sum(axis=(1, 2))
+        south[:, k] = od[:, k + 1 :, : k + 1].sum(axis=(1, 2))
 
     seg_n = {s.order: s.id for s in line.segments if s.direction == "north"}
     seg_s = {s.order: s.id for s in line.segments if s.direction == "south"}
     ids, starts, dem = [], [], []
-    slot_list = slots.to_list()
     for i, t in enumerate(slot_list):
         for k in range(n - 1):
             ids += [seg_n[k], seg_s[k]]
