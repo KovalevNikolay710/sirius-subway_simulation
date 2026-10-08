@@ -137,7 +137,7 @@ svg text { font-family: inherit; }
 
   <section class="kpis">
     <div class="panel kpi"><div class="lab">Ждут на станциях сейчас</div><div class="val" id="k_wait">0</div><span class="chip" id="d_wait"></span></div>
-    <div class="panel kpi"><div class="lab">Перегонов с полными поездами сейчас</div><div class="val" id="k_over">0</div><span class="chip" id="d_over"></span></div>
+    <div class="panel kpi"><div class="lab">Перегонов с перегрузкой сейчас</div><div class="val" id="k_over">0</div><span class="chip" id="d_over"></span></div>
     <div class="panel kpi"><div class="lab">Отказы в посадке с начала дня</div><div class="val" id="k_denied">0</div><span class="chip" id="d_denied"></span></div>
     <div class="panel kpi"><div class="lab">Ожидание с начала дня, пасс·мин</div><div class="val" id="k_wpm">0</div><span class="chip" id="d_wpm"></span></div>
   </section>
@@ -167,7 +167,8 @@ const C = { ink: "#1B2430", muted: "#6B7685", rule: "#E3E6EA", quiet: "#CFE3F3",
 const N = P.times.length, S = P.segs.length, ST = P.stations.length, DIRS = ["north", "south"];
 const state = { pos: P.first, playing: false, speed: 1, mode: "policy" };
 let dirty = true;
-const FULL = 0.995; // capacity is a hard limit: a full train means people stay behind
+// Shown value = demand / capacity (as in the forecast); above 1.0 people stay on the platform.
+const OVER = 1.0;
 
 // ---------- helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -177,10 +178,10 @@ const lerp = (a, b, f) => (a == null || b == null) ? (f < 0.5 ? a : b) : a + (b 
 const at = (arr, pos) => { const k = Math.floor(pos); return lerp(arr[k], arr[Math.min(k + 1, N - 1)], pos - k); };
 const hex = (c) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
 const mix = (a, b, f) => { const x = hex(a), y = hex(b); return "rgb(" + x.map((v, i) => Math.round(v + (y[i] - v) * f)).join(",") + ")"; };
-function band(f) { if (f == null) return null; if (f < 0.5) return C.quiet; if (f <= 0.8) return C.calm; if (f < FULL) return C.tight; return C.over; }
+function band(f) { if (f == null) return null; if (f < 0.5) return C.quiet; if (f <= 0.8) return C.calm; if (f <= OVER) return C.tight; return C.over; }
 function smooth(f) {
-  if (f == null) return C.none; if (f >= FULL) return C.over;
-  const st = [[0, "#E1EEF8"], [0.5, "#7DB7E3"], [0.8, C.calm], [0.86, C.tight], [0.97, C.tight], [FULL, C.over]];
+  if (f == null) return C.none; if (f >= 1.03) return C.over;
+  const st = [[0, "#E1EEF8"], [0.5, "#7DB7E3"], [0.8, C.calm], [0.85, C.tight], [1.0, C.tight], [1.03, C.over]];
   for (let i = 1; i < st.length; i++) if (f <= st[i][0]) return mix(st[i - 1][1], st[i][1], (f - st[i - 1][0]) / (st[i][0] - st[i - 1][0]));
   return C.over;
 }
@@ -203,7 +204,7 @@ function dragArea(elm, mapper, onStart) {
 // ---------- scrubber ----------
 const peaks = {};
 for (const v of ["baseline", "policy"]) { peaks[v] = [];
-  for (let k = 0; k < N; k++) { let m = null; for (const d of DIRS) for (const row of P.data[v].fill[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]); peaks[v].push(m); } }
+  for (let k = 0; k < N; k++) { let m = null; for (const d of DIRS) for (const row of P.data[v].ratio[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]); peaks[v].push(m); } }
 const maxWait = Math.max(1, ...P.data.baseline.kpi.waiting, ...P.data.policy.kpi.waiting);
 let ovCache = null;
 function buildOverview() {
@@ -271,8 +272,8 @@ function buildHeat() {
     g.font = "12px 'Golos Text', system-ui";
     for (let i = 0; i < S; i++) for (let k = x0; k <= P.last; k++) {
       let c;
-      if (state.mode === "diff") { const a = P.data.policy.fill[d][i][k], b = P.data.baseline.fill[d][i][k]; c = diffBand(a == null || b == null ? null : a - b); }
-      else c = band(P.data[variantOf()].fill[d][i][k]);
+      if (state.mode === "diff") { const a = P.data.policy.ratio[d][i][k], b = P.data.baseline.ratio[d][i][k]; c = diffBand(a == null || b == null ? null : a - b); }
+      else c = band(P.data[variantOf()].ratio[d][i][k]);
       g.fillStyle = c || C.empty; g.fillRect(left + (k - x0) * cw, HT + i * ROW, Math.ceil(cw), ROW - 2);
     }
     g.fillStyle = C.muted; g.textAlign = "center";
@@ -324,10 +325,10 @@ $("heat").addEventListener("mousemove", (e) => {
   const nh = h && h.j >= 0 && h.i >= 0 && h.i < S ? h.j * S + h.i : -1; if (nh !== hover) { hover = nh; dirty = true; }
   if (nh < 0 || $("heat").classList.contains("drag")) { tip.style.display = "none"; return; }
   const d = DIRS[h.j], k = Math.min(P.last, Math.max(P.first, Math.round(h.k))); let text;
-  if (state.mode === "diff") { const a = P.data.policy.fill[d][h.i][k], b = P.data.baseline.fill[d][h.i][k];
+  if (state.mode === "diff") { const a = P.data.policy.ratio[d][h.i][k], b = P.data.baseline.ratio[d][h.i][k];
     text = a == null || b == null ? "нет движения" : `политика ${sfmt((a - b) * 100)} п.п. к режиму без управления`; }
-  else { const f = P.data[variantOf()].fill[d][h.i][k], l = P.data[variantOf()].left[d][h.i][k];
-    text = f == null ? "нет движения" : `заполнение ${Math.round(f * 100)} %` + (l > 0.5 ? `, не уехали ${fmt(l)} чел.` : ""); }
+  else { const V = P.data[variantOf()], r = V.ratio[d][h.i][k], f = V.fill[d][h.i][k], l = V.left[d][h.i][k];
+    text = r == null ? "нет движения" : `спрос ${Math.round(r * 100)} % вместимости, поезда заполнены до ${Math.round(f * 100)} %` + (l > 0.5 ? `, не уехали ${fmt(l)} чел.` : ""); }
   const acts = P.actions.filter(a => a.seg === h.i && a.dir === d && a.k === k);
   tip.textContent = `${P.segs[h.i].tip}, ${h.j === 0 ? "на север" : "на юг"}, ${P.times[k]}: ${text}` + (acts.length ? `. Решение: ${acts[0].what}` : "");
   const r = $("heat").getBoundingClientRect(); tip.style.display = "block";
@@ -368,13 +369,13 @@ function drawStrip() {
   const D = P.data[variantOf()], k = Math.floor(state.pos);
   const recent = P.actions.filter(a => a.seg != null && a.applied && a.k <= k && a.k > k - 4);
   for (let i = 0; i < S; i++) for (const d of DIRS) {
-    const f = at(D.fill[d][i], state.pos), e = stripEls.segs[i][d];
+    const f = at(D.ratio[d][i], state.pos), e = stripEls.segs[i][d];
     e.r.setAttribute("fill", smooth(f));
     e.t.textContent = f != null && f > 0.8 ? Math.round(f * 100) + "%" : "";
-    e.t.setAttribute("fill", f != null && f >= FULL ? "#fff" : C.ink);
+    e.t.setAttribute("fill", f != null && f > OVER ? "#fff" : C.ink);
     const hit = recent.filter(a => a.seg === i && a.dir === d);
     e.r.setAttribute("class", hit.length ? "hl" + (hit.some(a => a.critical) ? " crit" : "") : "");
-    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `заполнение ${Math.round(f * 100)} %`) + (hit.length ? `. Решение: ${hit[hit.length - 1].what}` : "");
+    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `спрос ${Math.round(f * 100)} % вместимости`) + (hit.length ? `. Решение: ${hit[hit.length - 1].what}` : "");
   }
   for (let s = 0; s < ST; s++) {
     const a = at(D.queues.north[s], state.pos) || 0, b = at(D.queues.south[s], state.pos) || 0, tot = a + b;
@@ -416,7 +417,7 @@ function chip(id, d) {
   if (Math.round(d) === 0) { e.textContent = "как без управления"; e.className = "chip"; return; }
   e.textContent = sfmt(d) + " к режиму без управления"; e.className = "chip " + (d < 0 ? "good" : "bad");
 }
-function overCount(v) { let c = 0; for (const d of DIRS) for (let i = 0; i < S; i++) { const f = at(P.data[v].fill[d][i], state.pos); if (f != null && f >= FULL) c++; } return c; }
+function overCount(v) { let c = 0; for (const d of DIRS) for (let i = 0; i < S; i++) { const f = at(P.data[v].ratio[d][i], state.pos); if (f != null && f > OVER) c++; } return c; }
 function drawKpis() {
   const K = P.data[variantOf()].kpi, B = P.data.baseline.kpi, val = (x) => at(K[x], state.pos), base = (x) => at(B[x], state.pos);
   for (const [id, key] of [["wait", "waiting"], ["denied", "denied"], ["wpm", "wait_pax_min"]]) {
@@ -512,7 +513,7 @@ $("mode").onchange = (e) => { state.mode = e.target.value; heatCache = null; ovC
 function drawLegend() {
   const items = state.mode === "diff"
     ? [["политика разгрузила", C.good], ["без изменений", "#EEF1F4"], ["добавила нагрузку", C.over]]
-    : [["до 50 %", C.quiet], ["50–80 %", C.calm], ["80–99 %", C.tight], ["поезд полон, люди остаются", C.over]];
+    : [["до 50 %", C.quiet], ["50–80 %", C.calm], ["80–100 %", C.tight], ["больше 100 %", C.over]];
   $("legend").innerHTML = items.map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join("") +
     `<span><i class="dm" style="background:${C.over}"></i>снимает перегрузку</span><span><i class="dm" style="background:#fff"></i>другое решение</span>`;
 }

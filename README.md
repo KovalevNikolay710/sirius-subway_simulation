@@ -20,6 +20,10 @@ uv run metro-control team-bundle --out runs/team --forecast f.csv --recommendati
 METRO_RUN_DIR=runs/team uv run streamlit run app.py
 ```
 
+## Data
+What the screen needs, who provides it and in which format: [`docs/data_guide.md`](docs/data_guide.md).
+Upload on the «Данные» tab: a whole ZIP (organizer archive, team pack or both) or files one by one.
+
 ## Team packages
 - Person 2 forecast: `.csv` / `.parquet` with columns `station_id`, `interval_start` (tz-aware ISO, e.g. `2026-09-28T14:30:00Z`),
   `q50` and optional `q10`, `q90`; exactly 19 stations x 8 slots = 152 rows. Without `q10`/`q90` the quantiles are not ready.

@@ -52,10 +52,10 @@ EASING_ACTIONS = ("add_reserve", "shift_peak")
 
 def _critical(ac: dict[str, Any], seg: int | None, d: str | None, k: int, data: dict) -> bool:
     """An action answers a critical situation if it adds capacity where, without control,
-    the target segment is full or almost full during the next hour."""
+    demand on the target segment reaches 95 % of its capacity or more within the next hour."""
     if seg is None or d is None or ac.get("action") not in EASING_ACTIONS:
         return False
-    row = data["baseline"]["fill"][d][seg]
+    row = data["baseline"]["ratio"][d][seg]
     ahead = [x for x in row[max(0, k - 1) : k + 4] if x is not None]
     return bool(ahead) and max(ahead) >= CRITICAL_FILL
 
@@ -87,7 +87,8 @@ def sim_payload(
         out = []
         for k in range(n):
             s = frame(tl, v, k)["segments"].get(key)
-            out.append(None if s is None else s[field])
+            # runs written before "ratio" existed fall back to the train fill
+            out.append(None if s is None else s.get(field, s["fill"]))
         return out
 
     data: dict[str, Any] = {}
@@ -96,6 +97,7 @@ def sim_payload(
         data[v] = {
             "fill": {d: [seg_series(v, s[d], "fill") for s in segs] for d in DIRS},
             "left": {d: [seg_series(v, s[d], "left_behind") for s in segs] for d in DIRS},
+            "ratio": {d: [seg_series(v, s[d], "ratio") for s in segs] for d in DIRS},
             "queues": {
                 d: [[f["queues"].get(st, {}).get(d, 0.0) for f in fr] for st in order] for d in DIRS
             },

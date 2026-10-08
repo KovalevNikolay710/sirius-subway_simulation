@@ -289,9 +289,24 @@ def default_as_of(entries: pl.DataFrame) -> datetime:
     return cand["interval_start"].max()
 
 
+def mark_entries_real(
+    run_dir: Path | str, source: str = "organizers: 15-min entries workbooks"
+) -> None:
+    """The facts in entries.json came from the organizers' data, not from the generator."""
+    p = Path(run_dir) / "entries.json"
+    ent = json.loads(p.read_text(encoding="utf-8"))
+    ent["data_mode"] = "real"
+    ent["manifest"]["source"] = source
+    p.write_text(json.dumps(ent, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
 def build_mock_bundle(
-    out_dir: Path | str, entries: pl.DataFrame | None = None, as_of: datetime | None = None
+    out_dir: Path | str,
+    entries: pl.DataFrame | None = None,
+    as_of: datetime | None = None,
+    surge: dict[str, float] | None = None,
 ) -> Path:
+    """surge: per-station demand factor for the demo (None = `default_surge()`, {} = real day)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     if entries is None:
@@ -304,7 +319,7 @@ def build_mock_bundle(
     holidays = load_holidays()
     dtype = day_type(_msk_service_date(as_of), holidays)
     fc = mock_forecast(entries, as_of)
-    ld = mock_load(fc, entries, line, params, dtype, default_surge())
+    ld = mock_load(fc, entries, line, params, dtype, default_surge() if surge is None else surge)
     recs = mock_recommendations(ld, as_of)
     rec = recs[0]
     # service day starts 03:00 MSK

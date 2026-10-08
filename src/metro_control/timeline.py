@@ -36,9 +36,13 @@ def snapshot(state: SimState, params: SimParams, log_from: int, t_utc: datetime)
         j = i + 1 if x.direction == NORTH else i - 1
         if not 0 <= j < len(names):
             continue
-        s = segs.setdefault(f"{x.station}__{names[j]}", {"fill": 0.0, "left_behind": 0.0})
+        s = segs.setdefault(
+            f"{x.station}__{names[j]}", {"fill": 0.0, "left_behind": 0.0, "load": 0.0, "trains": 0}
+        )
         s["fill"] = max(s["fill"], x.load_after / params.capacity)
         s["left_behind"] += x.left_behind
+        s["load"] += x.load_after
+        s["trains"] += 1
     return {
         "t": t_utc.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "entered": round(state.entered, 1),
@@ -52,7 +56,13 @@ def snapshot(state: SimState, params: SimParams, log_from: int, t_utc: datetime)
         ),
         "queues": queues,
         "segments": {
-            k: {"fill": round(v["fill"], 3), "left_behind": round(v["left_behind"], 1)}
+            k: {
+                "fill": round(v["fill"], 3),
+                "left_behind": round(v["left_behind"], 1),
+                # demand / capacity, as in the forecast: everyone who wanted to ride this segment
+                # in the interval (carried + left on the platform) over all trains' places
+                "ratio": round((v["load"] + v["left_behind"]) / (v["trains"] * params.capacity), 3),
+            }
             for k, v in sorted(segs.items())
         },
     }
