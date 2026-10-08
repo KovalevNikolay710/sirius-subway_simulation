@@ -17,6 +17,7 @@ from metro_control.figures import (
     LINE1,
     MUTED,
 )
+from metro_control.ingest import ingest
 from metro_control.line import load_line
 from metro_control.screen import (
     action_card,
@@ -55,16 +56,16 @@ border-radius:50%;background:{LINE1};color:#fff;font-weight:700;font-size:22px">
     unsafe_allow_html=True,
 )
 
-run_dir = Path(os.environ.get("METRO_RUN_DIR", "runs/demo"))
-sim_dir = find_sim_dir(os.environ.get("METRO_SIM_DIR"), Path("runs"))
+# An upload on the "Данные" tab switches the screen to its run dir for this browser session.
+run_dir = Path(st.session_state.get("run_dir") or os.environ.get("METRO_RUN_DIR", "runs/demo"))
+sim_dir = (
+    Path(st.session_state["sim_dir"])
+    if st.session_state.get("sim_dir")
+    else find_sim_dir(os.environ.get("METRO_SIM_DIR"), Path("runs"))
+)
 line = load_line()
 names = {s.id: s.name_ru for s in line.stations}
 stations = sorted(line.stations, key=lambda s: s.order)
-
-if not run_dir.is_dir():
-    st.warning(f"Каталог запуска не найден: {run_dir}")
-    st.info("Создайте демо-данные: `uv run metro-control mock-bundle --out runs/demo`")
-    st.stop()
 
 MOCK_ICON = ":grey[:material/info:]"
 ICONS = {
@@ -73,6 +74,106 @@ ICONS = {
     "warning": ":orange[:material/warning:]",
     "error": ":red[:material/error:]",
 }
+
+DATA_TABLE = (
+    (Path(__file__).parent / "src/metro_control/assets/data_guide.md")
+    .read_text(encoding="utf-8")
+    .split("\n", 1)[1]
+)
+
+DATA_NOTES = (
+    "Загрузку перегонов приложение считает само: прогноз входов раскладывается по маршрутам "
+    "из истории и делится на вместимость (поезда в интервале × 1458 мест). Время в файлах — "
+    "UTC с указанием зоны, на экране — МСК; интервалы по 15 минут. Остальные файлы архива "
+    "организаторов (графики, показатели, характеристики составов) приложение не читает: "
+    "нужные из них числа уже внесены в `config/line.json` и `config/assumptions.json`."
+)
+
+UPLOAD_KINDS = {
+    "entries": ("Входы по станциям (Excel)", ["xlsx"]),
+    "forecast": ("Прогноз (json, csv, parquet)", ["json", "csv", "parquet"]),
+    "recommendation": ("Рекомендации (json, jsonl)", ["json", "jsonl"]),
+    "explanation": ("Объяснения (txt)", ["txt"]),
+    "sim": ("Запись симуляции (json, jsonl)", ["json", "jsonl"]),
+}
+
+
+def data_tab(status_lines: list | None) -> None:
+    st.subheader("Какие данные нужны")
+    st.markdown(DATA_TABLE)
+    st.caption(DATA_NOTES)
+
+    st.subheader("Сейчас на экране")
+    st.markdown(f"Пакеты: `{run_dir}`  \nСимуляция: `{sim_dir if sim_dir else 'нет записи'}`")
+    for line_ in status_lines or []:
+        st.markdown(f"{ICONS.get(line_.level, '')} {line_.text}")
+    overridden = st.session_state.get("run_dir") or st.session_state.get("sim_dir")
+    if overridden and st.button("Вернуться к демо-данным", icon=":material/undo:"):
+        st.session_state.pop("run_dir", None)
+        st.session_state.pop("sim_dir", None)
+        st.session_state.pop("ingest_notes", None)
+        st.rerun()
+
+    st.subheader("Загрузить")
+    archive = st.file_uploader(
+        "Архив целиком (.zip): архив организаторов, пакет команды или всё вместе",
+        type=["zip"],
+        key="up_zip",
+    )
+    singles: dict[str, list] = {}
+    with st.expander("Или файлы по отдельности"):
+        for kind, (label, types) in UPLOAD_KINDS.items():
+            singles[kind] = st.file_uploader(
+                label, type=types, accept_multiple_files=True, key=f"up_{kind}"
+            )
+    if st.button("Загрузить и показать", type="primary", icon=":material/upload:"):
+        files, kinds = [], {}
+        if archive is not None:
+            files.append((archive.name, archive.getvalue()))
+        for kind, items in singles.items():
+            for f in items or []:
+                name = f.name
+                if kind == "explanation" and not name.lower().startswith("explanation"):
+                    name = f"explanations/{name}"  # per-recommendation text, named by its id
+                files.append((name, f.getvalue()))
+                kinds[name] = kind
+        if not files:
+            st.warning("Выберите архив или файлы.")
+        else:
+            try:
+                with st.spinner("Разбираю файлы…"):
+                    rep = ingest(
+                        files,
+                        Path("runs"),
+                        kinds=kinds,
+                        default_entries=Path("data/processed/station_entries.parquet"),
+                    )
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                if rep.run_dir is not None and (rep.run_dir / "load.json").is_file():
+                    st.session_state["run_dir"] = str(rep.run_dir)
+                if rep.sim_dir is not None:
+                    st.session_state["sim_dir"] = str(rep.sim_dir)
+                st.session_state["ingest_notes"] = [(n.level, n.file, n.text) for n in rep.notes]
+                st.rerun()
+    notes = st.session_state.get("ingest_notes")
+    if notes:
+        st.markdown("**Результат последней загрузки**")
+        for level, file, text in notes:
+            where = f"`{file.split('/')[-1]}`: " if file else ""
+            st.markdown(f"{ICONS.get(level, '')} {where}{text}")
+
+
+if not run_dir.is_dir():
+    st.warning(f"Каталог запуска не найден: {run_dir}")
+    st.info(
+        "Загрузите данные ниже или создайте демо: "
+        "`uv run metro-control mock-bundle --out runs/demo`"
+    )
+    data_tab(None)
+    st.stop()
+
 bundle = load_bundle(run_dir)
 with st.sidebar:
     st.subheader("Источники данных")
@@ -168,17 +269,11 @@ def forecast_tab():
                 )
             )
         components.html(
-            load_html(load_payload(load_pkg, names, marks)), height=455, scrolling=False
+            load_html(load_payload(load_pkg, names, marks)), height=420, scrolling=False
         )
 
-    left, right = st.columns(2, gap="medium")
-
-    with left, st.container(border=True, height=470):
-        st.subheader(f"Рекомендации ({len(recs.items)})")
-        st.caption(
-            "Номера совпадают с метками на схеме выше. Откройте рекомендацию, "
-            "чтобы увидеть её обоснование."
-        )
+    with st.container(border=True):
+        st.subheader(f"Рекомендации :blue-badge[{len(recs.items)}]")
         for problem in recs.problems:
             st.warning(problem)
         if not recs.items:
@@ -194,26 +289,23 @@ def forecast_tab():
             ):
                 text, origin = explanation_for(run_dir, rec)
                 st.write(text)
-                st.caption(
-                    ("Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации")
-                    + (", mock (демо-рекомендация)" if card["is_mock"] else "")
-                )
+                tags = [":violet-badge[человек 4]"] if origin == "person4" else []
+                if card["is_mock"]:
+                    tags.append(":gray-badge[mock]")
+                if tags:
+                    st.markdown(" ".join(tags))
                 if ev is None:
-                    st.caption(
-                        "Обоснование по загрузке недоступно: цель не перегон или нет load.json."
-                    )
                     continue
-                st.markdown("**Обоснование: прогноз загрузки целевого перегона**")
                 if peak:
                     st.markdown(
                         f"Пик **{peak['r']:.0%}** в {peak['time']}: "
                         f"{fmt_int(peak['demand'])} пассажиров при вместимости "
-                        f"{fmt_int(peak['capacity'])} ({peak['departures']} поездов). "
-                        f"Порог для действия: {ev['r_on']:.0%}."
+                        f"{fmt_int(peak['capacity'])} ({peak['departures']} поездов), "
+                        f"порог {ev['r_on']:.0%}."
                     )
                 st.plotly_chart(evidence_figure(ev), width="stretch", key=f"ev_{n}")
 
-    with right, st.container(border=True, height=470):
+    with st.container(border=True):
         st.subheader("Вход на станции")
         sid = st.selectbox(
             "Станция",
@@ -346,8 +438,10 @@ def sim_tab():
     components.html(player_html(payload), height=1700, scrolling=False)
 
 
-tab_fc, tab_sim = st.tabs(["Прогноз и рекомендация", "Симулятор"])
+tab_fc, tab_sim, tab_data = st.tabs(["Прогноз и рекомендации", "Симулятор", "Данные"])
 with tab_fc:
     forecast_tab()
 with tab_sim:
     sim_tab()
+with tab_data:
+    data_tab(source_statuses(run_dir, bundle))
