@@ -20,6 +20,7 @@ from metro_control.mock import (
 from metro_control.screen import (
     BAND_LABELS_RU,
     action_card,
+    actionable,
     band,
     explanation_for,
     load_bundle,
@@ -350,3 +351,70 @@ def test_bundle_without_surge_and_as_of(entries, as_of, tmp_path):
     build_team_bundle(tmp_path / "c", entries, as_of=as_of, surge={})
     fc = json.loads((tmp_path / "c" / "forecast.json").read_text(encoding="utf-8"))
     assert datetime.fromisoformat(fc["payload"]["as_of"].replace("Z", "+00:00")) == as_of
+
+
+def _pkg_with_r(bundle_dir, rs):
+    lp = load_bundle(bundle_dir)["load"].package
+    base = lp.payload[0]
+    sids = segment_ids()[:3]
+    rows = [
+        base.model_copy(update={"segment_id": sid, "r": r})
+        for sid, r in zip(sids, rs, strict=False)
+    ]
+    return lp.model_copy(update={"payload": rows})
+
+
+def test_mock_none_targets_busiest(bundle_dir, as_of):
+    from metro_control.mock import mock_recommendations
+
+    pkg = _pkg_with_r(bundle_dir, [0.06, 0.61, 0.30])
+    recs = mock_recommendations(pkg, as_of)
+    assert len(recs) == 1 and recs[0].payload.action == "none"
+    assert recs[0].payload.target == segment_ids()[1] and "61%" in recs[0].payload.reason
+
+
+def test_actionable_and_load_payload_drops_none(bundle_dir, as_of):
+    from metro_control.line import load_line
+    from metro_control.mock import mock_recommendations
+    from metro_control.sim_view import load_payload
+
+    pkg = _pkg_with_r(bundle_dir, [0.06, 0.61, 0.30])
+    recs = mock_recommendations(pkg, as_of)
+    assert actionable(recs) == []
+    real = load_recommendations(bundle_dir).items
+    assert actionable(real + recs) == [r for r in real if r.payload.action != "none"]
+    lp = load_bundle(bundle_dir)["load"].package
+    names = {s.id: s.name_ru for s in load_line().stations}
+    marks = [
+        dict(action_card(r), target_id=r.payload.target, start=r.payload.start, end=r.payload.end)
+        for r in recs
+    ]
+    assert load_payload(lp, names, marks)["recs"] == []
+
+
+@pytest.mark.parametrize(("rs", "y_max"), [([0.06, 0.03], 0.1), ([0.61, None], 0.7), ([1.2], 1.4)])
+def test_rec_evidence_y_max(bundle_dir, rs, y_max):
+    rec = load_recommendations(bundle_dir).items[0]
+    lp = load_bundle(bundle_dir)["load"].package
+    base = lp.payload[0]
+    rows = [
+        base.model_copy(
+            update={
+                "segment_id": rec.payload.target,
+                "r": r,
+                "interval_start": base.interval_start + timedelta(minutes=15 * i),
+            }
+        )
+        for i, r in enumerate(rs)
+    ]
+    ev = rec_evidence(rec, lp.model_copy(update={"payload": rows}))
+    assert ev["y_max"] == pytest.approx(y_max)
+
+
+def test_asset_text_u1():
+    from metro_control.sim_view import ASSETS
+
+    load = (ASSETS / "load_player.html").read_text(encoding="utf-8")
+    assert 'class="win"' not in load and "recline" not in load and 'step="any"' in load
+    sim = (ASSETS / "sim_player.html").read_text(encoding="utf-8")
+    assert not any(ln.startswith(".crit {") for ln in sim.splitlines())

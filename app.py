@@ -21,6 +21,7 @@ from metro_control.ingest import ingest
 from metro_control.line import load_line
 from metro_control.screen import (
     action_card,
+    actionable,
     explanation_for,
     fmt_int,
     load_bundle,
@@ -223,16 +224,17 @@ def evidence_figure(ev: dict) -> go.Figure:
             annotation_text="окно",
             annotation_position="top left",
         )
-    fig.add_hline(
-        y=ev["r_on"] * 100,
-        line=dict(color="#D6083B", dash="dash", width=1.5),
-        annotation_text=f"порог {ev['r_on']:.0%}",
-        annotation_position="top right",
-    )
+    if ev["r_on"] <= ev["y_max"]:
+        fig.add_hline(
+            y=ev["r_on"] * 100,
+            line=dict(color="#D6083B", dash="dash", width=1.5),
+            annotation_text=f"порог {ev['r_on']:.0%}",
+            annotation_position="top right",
+        )
     fig.update_layout(
         height=190,
         margin=dict(l=10, r=10, t=24, b=10),
-        yaxis_title="загрузка, %",
+        yaxis=dict(title="загрузка, %", range=[0, ev["y_max"] * 100]),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
@@ -249,7 +251,7 @@ def forecast_tab():
         st.info("Пакет загрузки пуст.")
     else:
         marks = []
-        for rec in recs.items:
+        for rec in actionable(recs.items):
             card = action_card(rec)
             marks.append(
                 dict(
@@ -260,38 +262,38 @@ def forecast_tab():
             load_html(load_payload(load_pkg, names, marks)), height=420, scrolling=False
         )
 
-    with st.container(border=True):
-        st.subheader(f"Рекомендации :blue-badge[{len(recs.items)}]")
-        for problem in recs.problems:
-            st.warning(problem)
-        if not recs.items:
-            st.info("Нет рекомендаций (recommendation.json и recommendations.jsonl недоступны).")
-        for n, rec in enumerate(recs.items, 1):
-            card = action_card(rec)
-            ev = rec_evidence(rec, load_pkg)
-            peak = ev["peak"] if ev else None
-            tail = f", пик {peak['r']:.0%}" if peak and peak["r"] is not None else ""
-            with st.expander(
-                f"{n}. {card['window']}  {card['title']}: {card['target']}{tail}",
-                expanded=n == 1,
-            ):
-                text, origin = explanation_for(run_dir, rec)
-                st.write(text)
-                tags = [":violet-badge[человек 4]"] if origin == "person4" else []
-                if card["is_mock"]:
-                    tags.append(":gray-badge[mock]")
-                if tags:
-                    st.markdown(" ".join(tags))
-                if ev is None:
-                    continue
-                if peak:
-                    st.markdown(
-                        f"Пик **{peak['r']:.0%}** в {peak['time']}: "
-                        f"{fmt_int(peak['demand'])} пассажиров при вместимости "
-                        f"{fmt_int(peak['capacity'])} ({peak['departures']} поездов), "
-                        f"порог {ev['r_on']:.0%}."
-                    )
-                st.plotly_chart(evidence_figure(ev), width="stretch", key=f"ev_{n}")
+    todo = actionable(recs.items)
+    if todo or recs.problems:
+        with st.container(border=True):
+            st.subheader(f"Рекомендации :blue-badge[{len(todo)}]")
+            for problem in recs.problems:
+                st.warning(problem)
+            for n, rec in enumerate(todo, 1):
+                card = action_card(rec)
+                ev = rec_evidence(rec, load_pkg)
+                peak = ev["peak"] if ev else None
+                tail = f", пик {peak['r']:.0%}" if peak and peak["r"] is not None else ""
+                with st.expander(
+                    f"{n}. {card['window']}  {card['title']}: {card['target']}{tail}",
+                    expanded=n == 1,
+                ):
+                    text, origin = explanation_for(run_dir, rec)
+                    st.write(text)
+                    tags = [":violet-badge[человек 4]"] if origin == "person4" else []
+                    if card["is_mock"]:
+                        tags.append(":gray-badge[mock]")
+                    if tags:
+                        st.markdown(" ".join(tags))
+                    if ev is None:
+                        continue
+                    if peak:
+                        st.markdown(
+                            f"Пик **{peak['r']:.0%}** в {peak['time']}: "
+                            f"{fmt_int(peak['demand'])} пассажиров при вместимости "
+                            f"{fmt_int(peak['capacity'])} ({peak['departures']} поездов), "
+                            f"порог {ev['r_on']:.0%}."
+                        )
+                    st.plotly_chart(evidence_figure(ev), width="stretch", key=f"ev_{n}")
 
     with st.container(border=True):
         st.subheader("Вход на станции")

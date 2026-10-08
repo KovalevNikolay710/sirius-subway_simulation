@@ -252,11 +252,13 @@ def mock_recommendations(
             }
         )
     if not payloads:
-        top = max((r.r for r in rows), default=0.0)
+        busiest = max(rows, key=lambda r: r.r or 0.0, default=None)
+        top = busiest.r if busiest else 0.0
+        target = busiest.segment_id if busiest else load.payload[0].segment_id
         payloads.append(
             {
                 "action": "none",
-                "target": load.payload[0].segment_id,
+                "target": target,
                 "start": _iso(as_of),
                 "end": _iso(as_of + timedelta(minutes=60)),
                 "reason": (
