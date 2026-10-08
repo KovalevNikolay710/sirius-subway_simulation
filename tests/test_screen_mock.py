@@ -21,8 +21,11 @@ from metro_control.screen import (
     BAND_LABELS_RU,
     action_card,
     band,
+    explanation_for,
     load_bundle,
     load_package,
+    load_recommendations,
+    rec_evidence,
     segment_view,
     station_series,
 )
@@ -267,24 +270,71 @@ def test_cli_bad_parquet(tmp_path, capsys):
     assert "Traceback" not in capsys.readouterr().err
 
 
-def test_load_payload_and_rec_target(bundle_dir):
+def test_load_payload_and_rec_targets(bundle_dir):
     from metro_control.line import load_line
     from metro_control.sim_view import load_html, load_payload
 
     b = load_bundle(bundle_dir)
-    lp, rp = b["load"].package, b["recommendation"].package
+    lp = b["load"].package
     names = {s.id: s.name_ru for s in load_line().stations}
-    card = action_card(rp)
-    rec = dict(card, target_id=rp.payload.target, start=rp.payload.start, end=rp.payload.end)
-    p = load_payload(lp, names, rec)
+    items = load_recommendations(bundle_dir).items
+    marks = [
+        dict(action_card(r), target_id=r.payload.target, start=r.payload.start, end=r.payload.end)
+        for r in items
+    ]
+    p = load_payload(lp, names, marks)
     t = len({r.interval_start for r in lp.payload})
     assert len(p["times"]) == t and p["stations"][0] == "Девяткино"
     assert all(len(row) == t for d in ("north", "south") for row in p["fill"][d])
-    tgt = p["rec"]["target"]
-    seg = p["segs"][tgt["seg"]] if "seg" in tgt else None
-    if seg is not None:  # the mock recommendation targets a segment
-        key = {r.segment_id: r for r in lp.payload}
-        assert rp.payload.target in key
-    assert p["rec"]["slots"] and max(p["rec"]["slots"]) < t
+    assert [r["n"] for r in p["recs"]] == list(range(1, len(items) + 1))
+    assert all(r["target"] and "seg" in r["target"] for r in p["recs"] if r["slots"])
+    assert all(max(r["slots"]) < t for r in p["recs"] if r["slots"])
     assert "__PAYLOAD__" not in load_html(p)
-    assert load_payload(lp, names, None)["rec"] is None
+    assert load_payload(lp, names)["recs"] == []
+
+
+def test_mock_recommendations_worst_first(bundle_dir):
+    items = load_recommendations(bundle_dir).items
+    assert len(items) > 1
+    single = load_bundle(bundle_dir)["recommendation"].package
+    assert items[0].payload.recommendation_id == single.payload.recommendation_id
+    assert len({r.payload.recommendation_id for r in items}) == len(items)
+    assert len({r.payload.target for r in items}) == len(items)  # one per segment
+    lp = load_bundle(bundle_dir)["load"].package
+    peaks = [rec_evidence(r, lp)["peak"]["r"] for r in items]
+    assert peaks == sorted(peaks, reverse=True)
+
+
+def test_load_recommendations_jsonl_and_fallback(bundle_dir, tmp_path):
+    import shutil
+
+    d = tmp_path / "run"
+    shutil.copytree(bundle_dir, d)
+    lines = (d / "recommendations.jsonl").read_text(encoding="utf-8").splitlines()
+    (d / "recommendations.jsonl").write_text(lines[1] + "\n{broken\n", encoding="utf-8")
+    got = load_recommendations(d)
+    # recommendation.json (id of line 1) is added in front of the remaining valid line
+    assert [r.payload.recommendation_id for r in got.items] == [
+        json.loads(lines[0])["payload"]["recommendation_id"],
+        json.loads(lines[1])["payload"]["recommendation_id"],
+    ]
+    assert len(got.problems) == 1 and "строка 2" in got.problems[0]
+    (d / "recommendations.jsonl").unlink()
+    assert len(load_recommendations(d).items) == 1
+
+
+def test_rec_evidence_and_explanation_for(bundle_dir, tmp_path):
+    rec = load_recommendations(bundle_dir).items[0]
+    lp = load_bundle(bundle_dir)["load"].package
+    ev = rec_evidence(rec, lp)
+    assert ev and len(ev["r"]) == len(ev["times"]) == len(ev["in_window"])
+    assert any(ev["in_window"]) and ev["peak"]["r"] > ev["r_on"]
+    assert ev["peak"]["capacity"] == ev["peak"]["departures"] * 1458
+    assert rec_evidence(rec, None) is None
+    p4 = rec.model_copy(update={"payload": rec.payload.model_copy(update={"source": "person4"})})
+    (tmp_path / "explanations").mkdir()
+    (tmp_path / "explanations" / f"{rec.payload.recommendation_id}.txt").write_text(
+        "Своё объяснение", encoding="utf-8"
+    )
+    assert explanation_for(tmp_path, p4) == ("Своё объяснение", "person4")
+    assert explanation_for(tmp_path, rec)[1] == "reason"

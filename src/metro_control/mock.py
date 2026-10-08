@@ -16,6 +16,7 @@ from metro_control.contracts import (
     SLOT,
     ForecastPackage,
     LoadPackage,
+    LoadRow,
     Recommendation,
     StationEntriesPackage,
 )
@@ -221,39 +222,60 @@ def mock_load(
     return LoadPackage.model_validate({**env, "payload": rows})
 
 
-def mock_recommendation(load: LoadPackage, as_of: datetime) -> Recommendation:
+def mock_recommendations(
+    load: LoadPackage, as_of: datetime, limit: int = 6
+) -> list[Recommendation]:
+    """One add_reserve per overloaded segment (r > r_on), worst first; or a single "none"."""
     r_on = float(_assumption("r_on"))  # type: ignore[arg-type]
     rows = [r for r in load.payload if r.r is not None]
     env = _envelope("recommendation", f"mock-{_iso(as_of)}", as_of, "mock: threshold rule")
-    over = [r for r in rows if r.r > r_on]  # type: ignore[operator]
-    if over:
-        worst = max(over, key=lambda r: r.r)  # type: ignore[arg-type,return-value]
-        seg = worst.segment_id
+    over = [r for r in rows if (r.r or 0.0) > r_on]
+    worst: dict[str, LoadRow] = {}
+    for r in over:
+        if r.segment_id not in worst or (r.r or 0.0) > (worst[r.segment_id].r or 0.0):
+            worst[r.segment_id] = r
+    ranked = sorted(worst.values(), key=lambda r: -(r.r or 0.0))[:limit]
+    payloads = []
+    for w in ranked:
+        seg = w.segment_id
         start = min(r.interval_start for r in over if r.segment_id == seg)
-        payload = {
-            "action": "add_reserve",
-            "target": seg,
-            "start": _iso(start),
-            "end": _iso(start + timedelta(minutes=60)),
-            "reason": (
-                f"Загрузка перегона достигает {worst.r:.0%} от вместимости "
-                f"(порог {r_on:.0%}): добавить резервный поезд (mock)."
-            ),
-        }
-    else:
+        payloads.append(
+            {
+                "action": "add_reserve",
+                "target": seg,
+                "start": _iso(start),
+                "end": _iso(start + timedelta(minutes=60)),
+                "reason": (
+                    f"Загрузка перегона достигает {w.r or 0.0:.0%} от вместимости "
+                    f"(порог {r_on:.0%}): добавить резервный поезд (mock)."
+                ),
+            }
+        )
+    if not payloads:
         top = max((r.r for r in rows), default=0.0)
-        payload = {
-            "action": "none",
-            "target": load.payload[0].segment_id,
-            "start": _iso(as_of),
-            "end": _iso(as_of + timedelta(minutes=60)),
-            "reason": (
-                f"Максимальная загрузка {top:.0%} ниже порога {r_on:.0%}: "
-                "действий не требуется (mock)."
-            ),
-        }
-    payload |= {"recommendation_id": f"mock-{_iso(as_of)}", "as_of": _iso(as_of), "source": "mock"}
-    return Recommendation.model_validate({**env, "payload": payload})
+        payloads.append(
+            {
+                "action": "none",
+                "target": load.payload[0].segment_id,
+                "start": _iso(as_of),
+                "end": _iso(as_of + timedelta(minutes=60)),
+                "reason": (
+                    f"Максимальная загрузка {top:.0%} ниже порога {r_on:.0%}: "
+                    "действий не требуется (mock)."
+                ),
+            }
+        )
+    out = []
+    for i, payload in enumerate(payloads):
+        rid = f"mock-{_iso(as_of)}" if i == 0 else f"mock-{_iso(as_of)}-{i + 1}"
+        payload |= {"recommendation_id": rid, "as_of": _iso(as_of), "source": "mock"}
+        out.append(Recommendation.model_validate({**env, "payload": payload}))
+    return out
+
+
+def mock_recommendation(load: LoadPackage, as_of: datetime) -> Recommendation:
+    """The most urgent of `mock_recommendations` (kept for recommendation.json)."""
+    return mock_recommendations(load, as_of)[0]
 
 
 def default_as_of(entries: pl.DataFrame) -> datetime:
@@ -283,7 +305,8 @@ def build_mock_bundle(
     dtype = day_type(_msk_service_date(as_of), holidays)
     fc = mock_forecast(entries, as_of)
     ld = mock_load(fc, entries, line, params, dtype, default_surge())
-    rec = mock_recommendation(ld, as_of)
+    recs = mock_recommendations(ld, as_of)
+    rec = recs[0]
     # service day starts 03:00 MSK
     day_start = (as_of.astimezone(MSK) - timedelta(hours=3)).replace(
         hour=3, minute=0, second=0, microsecond=0
@@ -315,4 +338,8 @@ def build_mock_bundle(
             json.dumps(pkg.model_dump(mode="json"), ensure_ascii=False, indent=1) + "\n",
             encoding="utf-8",
         )
+    (out / "recommendations.jsonl").write_text(
+        "".join(json.dumps(r.model_dump(mode="json"), ensure_ascii=False) + "\n" for r in recs),
+        encoding="utf-8",
+    )
     return out
