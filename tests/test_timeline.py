@@ -136,6 +136,8 @@ def _app(run_dir, monkeypatch):
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("METRO_RUN_DIR", str(run_dir))
+    # Sim tab must not fall back to the developer's runs/compare-* (test is hermetic).
+    monkeypatch.setenv("METRO_SIM_DIR", str(run_dir))
     return AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
 
 

@@ -13,15 +13,52 @@
 # The loop stops (and notifies) when the gate stays red after SLICE_FIX_TRIES fix rounds,
 # when the session writes a line starting with NEEDS_USER:, or when dev is not clean after merge.
 # A failed push only warns: commits stay on local dev and go out with the next push.
+#
+# Only one loop per repository: a second start (another tmux window, a double click) exits at once
+# (code 3) with the pid of the running one. Reuse in another project: copy this script and the
+# /next-slice command, keep a docs/backlog.md table, set SLICE_GATE_CMD to that project's checks.
+#   SLICE_GATE_CMD='npm test && npm run lint' scripts/slice_loop.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+for tool in git claude jq; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "slice_loop: '$tool' not found in PATH." >&2; exit 1; }
+done
+git rev-parse --git-dir >/dev/null 2>&1 || { echo "slice_loop: not a git repository." >&2; exit 1; }
+
+# Single-instance lock: flock on Linux/WSL, mkdir fallback where flock is missing (macOS).
+LOCK="$(git rev-parse --git-common-dir)/slice_loop.lock"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>>"$LOCK" # append, so a losing start does not wipe the running loop's pid
+  # Wait a few seconds: a just-finished loop's notifier (WSL interop) can hold the lock briefly.
+  if ! flock -w 5 9; then
+    echo "slice_loop: already running in this repo (pid $(head -n1 "$LOCK" 2>/dev/null || echo '?'))." >&2
+    echo "Attach to it ('tmux ls', 'tmux attach -t loop') or stop it before starting another." >&2
+    exit 3
+  fi
+  : >"$LOCK"
+  echo $$ >&9
+else
+  if ! mkdir "$LOCK.d" 2>/dev/null; then
+    old=$(cat "$LOCK.d/pid" 2>/dev/null || true)
+    if [[ -n "$old" ]] && kill -0 "$old" 2>/dev/null; then
+      echo "slice_loop: already running in this repo (pid $old)." >&2
+      exit 3
+    fi
+    echo "slice_loop: removing stale lock of pid ${old:-?}." >&2
+    rm -r "$LOCK.d" && mkdir "$LOCK.d"
+  fi
+  echo $$ >"$LOCK.d/pid"
+  trap 'rm -r "$LOCK.d"' EXIT
+fi
 
 MODE="${SLICE_PERMISSION_MODE:-auto}"
 CONFIRM="${SLICE_CONFIRM:-0}"
 PUSH="${SLICE_PUSH:-1}"
 FIX_TRIES="${SLICE_FIX_TRIES:-2}"
 REMOTE="${SLICE_REMOTE:-origin}"
-LOG_DIR=runs/slice_logs
+LOG_DIR="${SLICE_LOG_DIR:-runs/slice_logs}"
+GATE_CMD="${SLICE_GATE_CMD:-uv run pytest -q && uv run ruff check . && uv run ruff format --check .}"
 mkdir -p "$LOG_DIR"
 
 notify() {
@@ -31,10 +68,10 @@ notify() {
     powershell.exe -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; \
 \$n=New-Object System.Windows.Forms.NotifyIcon; \$n.Icon=[System.Drawing.SystemIcons]::Information; \
 \$n.Visible=\$true; \$n.ShowBalloonTip(15000,'metro-control','$msg','Info'); Start-Sleep 15; \$n.Dispose()" \
-      >/dev/null 2>&1 &
+      >/dev/null 2>&1 9>&- &
   fi
   if [[ -n "${NTFY_TOPIC:-}" ]]; then
-    curl -fsS -m 10 -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+    curl -fsS -m 10 -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 9>&- || true
   fi
 }
 
@@ -51,19 +88,21 @@ next_slice() {
 run_claude() {
   local log=$1 out
   shift
-  out=$(claude -p --permission-mode "$MODE" --output-format json "$@")
+  # 9>&-: children (and e.g. a streamlit they leave running) must not inherit the loop's lock.
+  out=$(claude -p --permission-mode "$MODE" --output-format json "$@" 9>&-)
   SID=$(jq -r '.session_id' <<<"$out")
   RESULT=$(jq -r '.result' <<<"$out")
   tee -a "$log" <<<"$RESULT"
   echo >>"$log"
 }
 
-# gate -> 0 if tests and ruff are green on the working tree; failure output in $GATE_OUT
+# gate -> 0 if SLICE_GATE_CMD is green on the working tree; last 40 output lines in $GATE_OUT.
+# The command's own exit status decides: output is trimmed afterwards, never piped inside the check.
 gate() {
-  GATE_OUT=$({ uv run pytest -q 2>&1 | tail -n 20; } &&
-    { uv run ruff check . 2>&1 | tail -n 20; } &&
-    { uv run ruff format --check . 2>&1 | tail -n 20; }) && return 0
-  return 1
+  local out rc=0
+  out=$(bash -o pipefail -c "$GATE_CMD" 2>&1 9>&-) || rc=$?
+  GATE_OUT=$(tail -n 40 <<<"$out")
+  return "$rc"
 }
 
 stop_if_needs_user() {

@@ -34,6 +34,7 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - Commit messages: conventional (`feat(scope): …`, `fix: …`, `chore: …`, `docs: …`); merge commits `merge: <branch purpose>`.
 - Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice; own pytest + ruff gate, auto commit + merge + push `dev`;
   stops and notifies on a red gate, a `NEEDS_USER:` question or an unclean merge; `SLICE_CONFIRM=1` brings back the y/n prompt).
+  One loop per repo (lock in `.git/slice_loop.lock`): a second start exits with code 3. Gate command: `SLICE_GATE_CMD`.
 
 ## Token budget
 - Code is written by `slice-implementer` (sonnet); `haiku` for docs/fixture-only work. The main session writes briefs and verifies.
