@@ -94,14 +94,16 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 .acts .badge[hidden] { display: none; }
 .acts .badge { display: inline-block; font-size: 11px; color: #fff; background: var(--over); border-radius: 4px; padding: 0 5px; margin-left: 4px; }
 .acts li.err b { color: var(--over); }
-.count { font-size: 12.5px; color: var(--muted); }
+.count { font-size: 12px; color: var(--muted); background: #EEF1F4; border-radius: 999px; padding: 1px 8px; }
+.crit { font-size: 12px; color: #fff; background: var(--over); border-radius: 999px; padding: 1px 8px; }
+.crit[hidden] { display: none; }
 svg text { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <section class="console" aria-label="Проигрыватель симуляции">
+  <section class="console" aria-label="Проигрыватель симуляции" title="Клавиши: ← → шаг 15 минут, Shift + ← → час, ↑ ↓ скорость, Home и End, пробел — пуск и пауза">
     <div class="row">
       <button class="btn stepb" id="back" title="Назад на 15 минут" aria-label="Назад на 15 минут"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
       <button class="btn play" id="play" title="Пуск (пробел)" aria-label="Пуск"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
@@ -126,12 +128,10 @@ svg text { font-family: inherit; }
       <div class="thumb" id="thumb" data-t="05:15"></div>
       <div class="hours" id="hours"></div>
     </div>
-    <div class="keys">Клавиши: ← → шаг 15 минут, Shift + ← → час, ↑ ↓ скорость, Home и End — начало и конец дня, пробел — пуск и пауза.</div>
   </section>
 
   <section class="panel">
-    <div class="head"><h3>Загрузка линии за день</h3><div class="legend" id="legend"></div></div>
-    <div class="sub">Строка — перегон, по горизонтали — время, цвет — заполнение поездов. Ромбы — решения политики. Тяните по карте, чтобы перемотать.</div>
+    <div class="head" style="margin-bottom:8px" title="Тяните по карте, чтобы перемотать"><h3>Загрузка линии за день</h3><div class="legend" id="legend"></div></div>
     <div class="heat"><canvas id="heat"></canvas><div class="tip" id="tip"></div></div>
   </section>
 
@@ -143,8 +143,7 @@ svg text { font-family: inherit; }
   </section>
 
   <section class="panel">
-    <h3 id="nowTitle">Линия сейчас</h3>
-    <div class="sub">Над линией — поезда на север, под линией — на юг, кружки — очереди на платформах. Обведён перегон последнего решения политики, красным — если оно снимает перегрузку.</div>
+    <h3 id="nowTitle" style="margin-bottom:4px">Линия сейчас</h3>
     <svg id="strip" width="100%" height="272"></svg>
   </section>
 
@@ -155,8 +154,7 @@ svg text { font-family: inherit; }
       <svg id="wait" width="100%" height="250" style="cursor:grab;touch-action:none"></svg>
     </div>
     <div class="panel">
-      <div class="head"><h3>Решения политики по порядку</h3><span class="count" id="actCount"></span></div>
-      <div class="sub">Список идёт вместе со временем. Красная метка — решение снимает перегрузку. Нажмите на решение, чтобы перейти к его времени.</div>
+      <div class="head" style="margin-bottom:8px"><h3>Решения политики</h3><span class="count" id="actCount" title="применено из всех решений"></span><span class="crit" id="actCrit" title="решений, снимающих перегрузку"></span></div>
       <ul class="acts" id="acts"></ul>
     </div>
   </section>
@@ -402,7 +400,7 @@ function buildWait() {
   const ph = el("line", { y1: T, y2: h - B, stroke: C.ink, "stroke-width": 2 }, sv);
   const dot = el("circle", { r: 4.5, fill: C.calm, stroke: "#fff", "stroke-width": 2 }, sv);
   W = { X, Y, ph, dot, L, R, w, x0, x1 };
-  $("waitSub").innerHTML = `<span style="color:${C.calm}">— с политикой</span>&nbsp;&nbsp;<span style="color:${C.muted}">- - без управления</span>&nbsp;&nbsp;Тяните по графику, чтобы перемотать.`;
+  $("waitSub").innerHTML = `<span style="color:${C.calm}">— с политикой</span>&nbsp;&nbsp;<span style="color:${C.muted}">- - без управления</span>`;
 }
 function drawWait() {
   if (!W) buildWait(); if (!W) return; const x = W.X(state.pos);
@@ -447,7 +445,8 @@ function drawActs() {
   const k = Math.floor(state.pos + 1e-6), items = $("acts").children;
   let cur = -1; P.actions.forEach((a, n) => { if (a.k <= k) cur = n; });
   const applied = P.actions.filter(a => a.k <= k && a.applied).length, crit = P.actions.filter(a => a.k <= k && a.critical).length;
-  $("actCount").textContent = `применено ${applied} из ${P.actions.filter(a => a.applied).length}, снимают перегрузку: ${crit}`;
+  $("actCount").textContent = `${applied}/${P.actions.filter(a => a.applied).length}`;
+  $("actCrit").textContent = crit; $("actCrit").hidden = !crit;
   if (cur === curAct || !P.actions.length) return;
   const forward = cur > curAct; curAct = cur;
   [...items].forEach((li, n) => { li.classList.toggle("future", n > cur); li.classList.toggle("current", n === cur); });

@@ -157,11 +157,13 @@ def read_entries_workbook(path: Path | str, line: LineRef, holidays: set[date]) 
     return pl.concat(frames)
 
 
-def load_all(raw_dir: Path | str, line: LineRef, holidays: set[date]) -> pl.DataFrame:
-    raw = Path(raw_dir)
-    files = sorted(raw.glob("Входные пассажиропотоки Линия 1 * 2026 по 15-мин.xlsx"))
+ENTRIES_GLOB = "Входные пассажиропотоки Линия 1 * 2026 по 15-мин.xlsx"
+
+
+def load_workbooks(files: list[Path], line: LineRef, holidays: set[date]) -> pl.DataFrame:
+    """All rows of the given 15-min entries workbooks, sorted, duplicates rejected."""
     if not files:
-        raise ValueError(f"no entries workbooks found in {raw}")
+        raise ValueError("no entries workbooks given")
     df = pl.concat([read_entries_workbook(f, line, holidays) for f in files])
     rank = {s.id: s.order for s in line.stations}
     df = df.with_columns(
@@ -173,6 +175,14 @@ def load_all(raw_dir: Path | str, line: LineRef, holidays: set[date]) -> pl.Data
         r = dup.row(0)
         raise ValueError(f"duplicate (station_id, interval_start): {r[0]} {r[1]}")
     return df
+
+
+def load_all(raw_dir: Path | str, line: LineRef, holidays: set[date]) -> pl.DataFrame:
+    raw = Path(raw_dir)
+    files = sorted(raw.glob(ENTRIES_GLOB))
+    if not files:
+        raise ValueError(f"no entries workbooks found in {raw}")
+    return load_workbooks(files, line, holidays)
 
 
 def write_parquet(df: pl.DataFrame, out_path: Path | str) -> Path:
