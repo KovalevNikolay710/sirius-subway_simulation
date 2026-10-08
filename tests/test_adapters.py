@@ -220,10 +220,11 @@ def test_statuses_failures(tmp_path, full_dir):
         os.environ["METRO_SIM_DIR"] = str(tmp_path / "nosim")
         try:
             at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+            at.switch_page("views/data.py").run()
         finally:
             del os.environ["METRO_RUN_DIR"], os.environ["METRO_SIM_DIR"]
         assert not at.exception, name
-        shown = " ".join(x.value for x in [*at.error, *at.warning, *at.sidebar.markdown])
+        shown = " ".join(x.value for x in [*at.error, *at.warning, *at.markdown])
         assert expect in shown, (name, shown)
 
 
