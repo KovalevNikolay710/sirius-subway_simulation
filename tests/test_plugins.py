@@ -3,7 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from test_scenario import ASS, LINE, fx, result  # noqa: F401  (module fixtures)
+from test_scenario import ASS, LINE
 
 from metro_control import mock, plugins, scenario
 from metro_control.cli import main
@@ -12,7 +12,7 @@ from metro_control.od import load_od_params
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _run(fx, **kw):  # noqa: F811
+def _run(fx, **kw):
     return scenario.compare("rail_surge", fx, LINE, load_od_params(), ASS, **kw)
 
 
@@ -29,7 +29,7 @@ def _boom(load):
 
 
 @pytest.fixture(scope="module")
-def boom(fx):  # noqa: F811
+def boom(fx):
     return _run(fx, policy_fn=_boom, policy_label="t.py:_boom")
 
 
@@ -59,12 +59,12 @@ def _mixed(load):
 
 
 @pytest.fixture(scope="module")
-def mixed(fx):  # noqa: F811
+def mixed(fx):
     _calls["n"] = 0
     return _run(fx, policy_fn=_mixed, policy_label="p4")
 
 
-def test_policy_raises(boom, result):  # noqa: F811
+def test_policy_raises(boom, result):
     r = boom
     assert r.effect.payload.baseline == result.effect.payload.baseline
     assert r.policy.entered == pytest.approx(result.baseline.entered)
@@ -97,7 +97,7 @@ def test_invalid_future_and_valid(mixed):
     assert sum(mixed.outcomes.values()) == 96
 
 
-def test_policy_gets_copy(fx):  # noqa: F811
+def test_policy_gets_copy(fx):
     as_of = fx["interval_start"].max()
     hist = fx.filter(fx["interval_start"] < as_of)
     ld = mock.mock_load(
@@ -114,7 +114,7 @@ def test_policy_gets_copy(fx):  # noqa: F811
     assert ld.model_dump_json() == before
 
 
-def test_forecast_raises(fx, result):  # noqa: F811
+def test_forecast_raises(fx, result):
     def fboom(h, t):
         raise ValueError("no model")
 
@@ -128,7 +128,7 @@ def test_forecast_raises(fx, result):  # noqa: F811
     assert r.manifest["forecast"] == "f.py:fboom"
 
 
-def test_forecast_history_copy(fx):  # noqa: F811
+def test_forecast_history_copy(fx):
     as_of = fx["interval_start"].max()
     h = fx.filter(fx["interval_start"] < as_of)
     n = h.height
@@ -141,7 +141,7 @@ def test_forecast_history_copy(fx):  # noqa: F811
     assert h.height == n
 
 
-def test_default_manifest(result):  # noqa: F811
+def test_default_manifest(result):
     assert result.manifest["policy"] == "mock" and result.manifest["forecast"] == "mock"
     assert all(a["source"] == "mock" for a in result.actions)
 
@@ -169,7 +169,7 @@ def test_cli_bad_plugin(capsys, tmp_path):
     assert capsys.readouterr().err.startswith("error:")
 
 
-def test_app_source_error(tmp_path, monkeypatch, result):  # noqa: F811
+def test_app_source_error(tmp_path, monkeypatch, result):
     from streamlit.testing.v1 import AppTest
 
     d = scenario.write_run(result, tmp_path)

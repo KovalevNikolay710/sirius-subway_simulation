@@ -29,6 +29,7 @@ build-backend = "uv_build"
 dev = [
     "playwright>=1.63.0",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.16.10",
 ]
 
@@ -42,4 +43,4 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --tb=short"
+addopts = "-q --tb=short -n 3 --dist loadgroup"

@@ -8,7 +8,7 @@ Full plan: `docs/plan.md`. Organizer data structure and parameters: `docs/data_n
 Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_человека_3_*.docx`.
 
 ## Commands
-- `uv run pytest` — all tests (must stay < ~1 min)
+- `uv run pytest` — all tests (must stay < ~1 min; runs on 3 xdist workers, `-n 0` for serial — `-p no:xdist` fails on addopts)
 - `uv run ruff check . && uv run ruff format --check .`
 - `uv run metro-control doctor` — environment check; more subcommands appear per slice
 - `uv run streamlit run app.py` — dispatcher screen
