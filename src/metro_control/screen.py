@@ -292,3 +292,38 @@ def explanation_text(run_dir: Path | str, rec: Recommendation) -> tuple[str, str
     if text:
         return text, "person4"
     return rec.payload.reason, "reason"
+
+
+ACTION_RU = {
+    "add_reserve": "Резервный поезд",
+    "remove_train": "Снять поезд",
+    "shift_peak": "Сдвинуть пик",
+}
+STATUS_RU = {
+    "applied": "выполнено",
+    "rejected": "отклонено",
+    "pending": "ожидает",
+    "source_error": "ошибка источника",
+}
+
+
+def fmt_int(x: float, signed: bool = False) -> str:
+    """Integer with narrow no-break space thousands separator; `signed` adds + or minus."""
+    n = round(x)
+    body = f"{abs(n):,}".replace(",", " ")
+    if n < 0:
+        return "−" + body
+    return ("+" + body) if signed and n > 0 else body
+
+
+def action_row(ac: dict[str, Any], names: dict[str, str]) -> tuple[str, str, str]:
+    """Human-readable (action, target, status) for the actions table."""
+    action = str(ac.get("action", ""))
+    status = str(ac.get("status", ""))
+    target = str(ac.get("target", ""))
+    parts = target.split("__")
+    if len(parts) == 2 and all(p in names for p in parts):
+        target = f"{names[parts[0]]} → {names[parts[1]]}"
+    elif target in names:
+        target = names[target]
+    return ACTION_RU.get(action, action), target, STATUS_RU.get(status, status)

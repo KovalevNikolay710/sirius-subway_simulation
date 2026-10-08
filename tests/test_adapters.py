@@ -223,7 +223,7 @@ def test_statuses_failures(tmp_path, full_dir):
         finally:
             del os.environ["METRO_RUN_DIR"], os.environ["METRO_SIM_DIR"]
         assert not at.exception, name
-        shown = " ".join(x.value for x in [*at.error, *at.warning])
+        shown = " ".join(x.value for x in [*at.error, *at.warning, *at.sidebar.markdown])
         assert expect in shown, (name, shown)
 
 
