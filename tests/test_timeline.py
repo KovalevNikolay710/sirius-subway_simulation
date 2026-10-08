@@ -1,9 +1,8 @@
-# ruff: noqa: F811
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from test_scenario import ASS, LINE, fx, result  # noqa: F401
+from test_scenario import ASS, LINE
 
 from metro_control import scenario, timeline
 from metro_control.sim import Arrival, SimParams, new_state, run

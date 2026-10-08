@@ -4,7 +4,6 @@ import zipfile
 from datetime import UTC, datetime
 
 import pytest
-from test_scenario import ASS, LINE, fx, result  # noqa: F401
 
 from metro_control import scenario
 from metro_control.ingest import classify, expand, ingest
@@ -49,7 +48,7 @@ def test_expand_flattens_and_guards():
         expand([("bad.zip", b"not a zip")])
 
 
-def test_ingest_team_zip_with_sim(team, result, tmp_path):  # noqa: F811
+def test_ingest_team_zip_with_sim(team, result, tmp_path):
     sim = scenario.write_run(result, tmp_path / "src_sim")
     files = {
         f"team/{n}": (team / n).read_bytes() for n in ("forecast.json", "recommendations.jsonl")
@@ -77,7 +76,7 @@ def test_ingest_bad_recommendation_line_reported(team, tmp_path):
     assert len(load_recommendations(rep.run_dir).items) == 1
 
 
-def test_ingest_sim_only_keeps_current_packages(result, tmp_path):  # noqa: F811
+def test_ingest_sim_only_keeps_current_packages(result, tmp_path):
     sim = scenario.write_run(result, tmp_path / "src_sim")
     rep = ingest(
         [("timeline.json", (sim / "timeline.json").read_bytes())], tmp_path / "runs", now=NOW

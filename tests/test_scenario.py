@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 import polars as pl
 import pytest
 
-from metro_control import contracts, policy, scenario
+from metro_control import contracts, scenario
 from metro_control.cli import main
 from metro_control.dayrun import load_assumption_items, service_origin
 from metro_control.entries import SCHEMA
@@ -77,17 +77,6 @@ def test_apply_shift_and_surge():
     assert scenario.apply_scenario(day, spec["quiet_weekend"]).equals(day)
 
 
-@pytest.fixture(scope="module")
-def fx():
-    days = [date(2026, 9, 28), date(2026, 9, 29), date(2026, 9, 30), date(2026, 10, 1)]
-    return pl.concat([day_frame(d, 20.0) for d in days])
-
-
-@pytest.fixture(scope="module")
-def result(fx):
-    return scenario.compare("rail_surge", fx, LINE, load_od_params(), ASS)
-
-
 def test_compare_identical_inputs_and_balance(result):
     b, p = result.baseline, result.policy
     assert b.entered == pytest.approx(p.entered)
@@ -103,20 +92,12 @@ def test_compare_identical_inputs_and_balance(result):
     assert eff.payload.baseline_run_id != eff.payload.policy_run_id
 
 
-def test_history_never_future(fx, monkeypatch):
-    seen = []
-    orig = policy.recommend_at
-
-    def spy(history, as_of, *a, **k):
-        if history.height:
-            assert history["interval_start"].max() < as_of
-        seen.append(as_of)
-        rec, mem = orig(history, as_of, *a, **k)
-        assert rec.payload.as_of == as_of
-        return rec, mem
-
-    monkeypatch.setattr(policy, "recommend_at", spy)
-    scenario.compare("rail_surge", fx, LINE, load_od_params(), ASS)
+def test_history_never_future(result_calls):
+    for as_of, hist_max, rec_as_of in result_calls:
+        if hist_max is not None:
+            assert hist_max < as_of
+        assert rec_as_of == as_of
+    seen = [c[0] for c in result_calls]
     assert len(seen) == 96
     assert seen == sorted(seen)
     assert all(s.minute % 15 == 0 for s in seen)
