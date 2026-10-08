@@ -142,10 +142,11 @@ def recommend_at(
     memory: PolicyMemory,
     reserves_left: dict[str, int],
     surge: dict[str, float] | None = None,
+    surge_window: tuple[datetime, datetime] | None = None,
 ) -> tuple[Recommendation, PolicyMemory]:
     """Mock forecast -> mock load -> mock policy; reads history strictly before as_of."""
     fc = mock.mock_forecast(history, as_of)
     dtype = mock._slot_day_type(as_of)
     sg = {} if surge is None else surge  # no implicit demo surge (D22)
-    ld = mock.mock_load(fc, history, line, od_params, dtype, sg)
+    ld = mock.mock_load(fc, history, line, od_params, dtype, sg, surge_window)
     return mock_policy(ld, as_of, memory, reserves_left)

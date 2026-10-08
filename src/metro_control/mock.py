@@ -172,13 +172,21 @@ def mock_load(
     params: od.OdParams,
     day_type: str,
     surge: dict[str, float],
+    surge_window: tuple[datetime, datetime] | None = None,
 ) -> LoadPackage:
+    """surge_window=[w0, w1): the surge factor applies only to forecast rows inside it."""
     as_of = forecast.payload.as_of
+
+    def _f(r) -> float:  # noqa: ANN001
+        if surge_window is not None and not surge_window[0] <= r.interval_start < surge_window[1]:
+            return 1.0
+        return surge.get(r.station_id, 1.0)
+
     entries = pl.DataFrame(
         {
             "station_id": [r.station_id for r in forecast.payload.rows],
             "interval_start": [r.interval_start for r in forecast.payload.rows],
-            "entries": [r.q50 * surge.get(r.station_id, 1.0) for r in forecast.payload.rows],
+            "entries": [r.q50 * _f(r) for r in forecast.payload.rows],
         },
         schema={
             "station_id": pl.String,

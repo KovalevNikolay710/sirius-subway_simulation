@@ -169,6 +169,48 @@ def _sim_day(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compare(args: argparse.Namespace) -> int:
+    import time
+
+    import polars as pl
+
+    from metro_control.dayrun import load_assumption_items
+    from metro_control.line import load_line
+    from metro_control.od import load_od_params
+    from metro_control.scenario import compare, write_run
+
+    path = Path(args.entries)
+    if not path.is_file():
+        print(f"error: entries parquet not found: {path}", file=sys.stderr)
+        return 1
+    t0 = time.perf_counter()
+    try:
+        res = compare(
+            args.scenario,
+            pl.read_parquet(path),
+            load_line(),
+            load_od_params(),
+            load_assumption_items(),
+        )
+    except ValueError as e:
+        print(f"error: {e}".splitlines()[0], file=sys.stderr)
+        return 1
+    run_dir = write_run(res, Path(args.out))
+    pl_ = res.effect.payload
+    print(
+        f"{'':9}{'wait_pax_min':>14}{'denied':>9}{'queue_left':>11}{'max_fill':>9}{'train_km':>10}"
+    )
+    for name, m in (("baseline", pl_.baseline), ("policy", pl_.policy)):
+        print(
+            f"{name:<9}{m.wait_pax_min:>14.0f}{m.denied_boardings:>9.0f}{m.queue_left:>11.0f}"
+            f"{m.max_fill:>9.3f}{m.train_km:>10.0f}"
+        )
+    print(f"actions: {dict(sorted(res.outcomes.items()))}")
+    print(f"wrote {run_dir}")
+    print(f"wall: {time.perf_counter() - t0:.1f} s")
+    return 0
+
+
 def _mock_bundle(args: argparse.Namespace) -> int:
     from datetime import datetime
 
@@ -238,6 +280,13 @@ def build_parser() -> argparse.ArgumentParser:
     mb.add_argument("--entries", default=None)
     mb.add_argument("--as-of", default=None, help="ISO datetime with offset")
     mb.set_defaults(func=_mock_bundle)
+    cp = sub.add_parser("compare", help="run a scenario day: baseline vs mock policy")
+    cp.add_argument(
+        "--scenario", required=True, choices=["quiet_weekend", "rail_surge", "snowfall"]
+    )
+    cp.add_argument("--entries", default="data/processed/station_entries.parquet")
+    cp.add_argument("--out", default="runs")
+    cp.set_defaults(func=_compare)
     return parser
 
 
