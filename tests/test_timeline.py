@@ -191,3 +191,21 @@ def test_app_playing_is_time_driven(result, tmp_path, monkeypatch):
     assert at.session_state["player"].k == 5
     at.selectbox(key="s4_station").select_index(1).run()
     assert at.session_state["player"].k == 5
+
+
+def test_find_sim_dir(tmp_path):
+    assert timeline.find_sim_dir("/x/y", tmp_path) == Path("/x/y")
+    assert timeline.find_sim_dir(None, tmp_path) is None
+    for n, has in (("compare-a", True), ("compare-b", False), ("compare-c", True)):
+        (tmp_path / n).mkdir()
+        if has:
+            (tmp_path / n / timeline.FILE).write_text("{}")
+    assert timeline.find_sim_dir(None, tmp_path) == tmp_path / "compare-c"
+    assert timeline.find_sim_dir(None, tmp_path / "missing") is None
+
+
+def test_actions_until_skips_malformed():
+    good = {"as_of": "2026-09-30T10:00:00Z", "kind": "x"}
+    acts = [good, 5, {"x": 1}, {"as_of": "bad"}, {"as_of": 7}]
+    t = datetime(2026, 9, 30, 11, 0, tzinfo=UTC)
+    assert timeline.actions_until(acts, t) == [good]
