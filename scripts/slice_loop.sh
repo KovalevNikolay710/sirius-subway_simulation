@@ -77,12 +77,36 @@ stop_if_needs_user() {
   fi
 }
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Working tree is not clean; commit or stash first." >&2
+push_dev() {
+  [[ "$PUSH" == "1" ]] || return 0
+  GIT_TERMINAL_PROMPT=0 git push -q "$REMOTE" dev ||
+    echo "Push to $REMOTE failed; dev is ahead locally. Continuing." >&2
+}
+
+# Resume after an interrupted run (Ctrl+C, shutdown): the loop may have stopped on a slice branch.
+start_branch=$(git branch --show-current)
+if [[ "$start_branch" == feature/S* ]]; then
+  if [[ -n "$(git status --porcelain)" ]]; then
+    # Mid-slice: stay here; next_slice sees the `doing` row and /next-slice resumes on this branch.
+    echo "Resuming interrupted slice on $start_branch (uncommitted work kept)."
+  elif [[ -n "$(git rev-list dev.."$start_branch")" ]]; then
+    # Committed but not merged: finish the merge like step 7 of /next-slice.
+    echo "Finishing merge of $start_branch into dev."
+    gate || { echo "$GATE_OUT" >&2; echo "Gate red on $start_branch; fix it by hand." >&2; exit 1; }
+    git switch -q dev
+    git merge --no-ff -q -m "merge: ${start_branch#feature/}" "$start_branch"
+    git branch -d "$start_branch"
+    push_dev
+  else
+    git switch -q dev
+  fi
+elif [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree is not clean on '$start_branch'; commit or stash first." >&2
   exit 1
+else
+  # Git flow: each slice branches off dev and is merged back into dev by /next-slice.
+  git switch -q dev
 fi
-# Git flow: each slice branches off dev and is merged back into dev by /next-slice.
-git switch -q dev
 
 OK_MSG="OK from the loop (green gate passed, supervisor reviews pushed history): commit on the feature branch \
 with your proposed message, merge into dev as in step 7, run the tests on dev, delete the branch. \
