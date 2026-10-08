@@ -45,6 +45,20 @@ def _date_ru(iso: str) -> str:
     return f"{d.day} {MONTHS_RU[d.month - 1]}"
 
 
+CRITICAL_FILL = 0.95  # display threshold: a full or almost full segment within the next hour
+EASING_ACTIONS = ("add_reserve", "shift_peak")
+
+
+def _critical(ac: dict[str, Any], seg: int | None, d: str | None, k: int, data: dict) -> bool:
+    """An action answers a critical situation if it adds capacity where, without control,
+    the target segment is full or almost full during the next hour."""
+    if seg is None or d is None or ac.get("action") not in EASING_ACTIONS:
+        return False
+    row = data["baseline"]["fill"][d][seg]
+    ahead = [x for x in row[max(0, k - 1) : k + 4] if x is not None]
+    return bool(ahead) and max(ahead) >= CRITICAL_FILL
+
+
 def sim_payload(
     tl: Timeline, names: dict[str, str], actions: list[dict[str, Any]], policy_label: str
 ) -> dict[str, Any]:
@@ -92,6 +106,10 @@ def sim_payload(
 
     service = [k for k in range(n) if moving(k)]
     first, last = (service[0], service[-1]) if service else (0, n - 1)
+    where = {}
+    for i, sg in enumerate(segs):
+        for d in DIRS:
+            where[sg[d]] = (i, d)
     acts = []
     for ac in actions:
         try:
@@ -103,8 +121,21 @@ def sim_payload(
             what, target, status = "Ошибка источника", ac.get("source", "?"), ac.get("reason", "")
         else:
             what, target, status = action_row(ac, names)
+        seg, d = where.get(str(ac.get("target", "")), (None, None))
         acts.append(
-            {"k": k, "time": f"{to_msk(t):%H:%M}", "what": what, "target": target, "status": status}
+            {
+                "k": k,
+                "time": f"{to_msk(t):%H:%M}",
+                "what": what,
+                "target": target,
+                "status": status,
+                "reason": str(ac.get("reason", "")),
+                "seg": seg,
+                "dir": d,
+                "applied": ac.get("status") == "applied",
+                "error": ac.get("status") == "source_error",
+                "critical": _critical(ac, seg, d, k, data),
+            }
         )
     return {
         "scenario": SCENARIO_RU.get(tl.scenario, tl.scenario),
@@ -127,3 +158,68 @@ def player_html(payload: dict[str, Any]) -> str:
     """The player page with the payload inlined (`</` escaped so data cannot close the script)."""
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     return PLAYER_HTML.read_text(encoding="utf-8").replace("__PAYLOAD__", data)
+
+
+def load_payload(
+    load_pkg: Any, names: dict[str, str], rec: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Forecast segment load for the in-browser strip: fill[dir][seg][t] over the package slots.
+
+    `rec` (optional): {"title", "target" (segment or station id), "start", "end" (UTC datetimes),
+    "reason", "is_mock"} — highlighted on the strip during its window.
+    """
+    from metro_control.line import load_line
+
+    line = load_line()
+    order = [s.id for s in sorted(line.stations, key=lambda s: s.order, reverse=True)]
+    slots = sorted({r.interval_start for r in load_pkg.payload})
+    rows = {(r.segment_id, r.interval_start): r for r in load_pkg.payload}
+    segs, fill, demand = [], {d: [] for d in DIRS}, {d: [] for d in DIRS}
+    for i in range(len(order) - 1):
+        up, down = order[i], order[i + 1]
+        keys = {"north": f"{down}__{up}", "south": f"{up}__{down}"}
+        segs.append(
+            {
+                "label": names.get(up, up),
+                "tip": f"{names.get(up, up)} – {names.get(down, down)}",
+                **keys,
+            }
+        )
+        for d in DIRS:
+            fill[d].append([getattr(rows.get((keys[d], t)), "r", None) for t in slots])
+            demand[d].append([getattr(rows.get((keys[d], t)), "demand", None) for t in slots])
+    target = None
+    if rec:
+        tid = str(rec.get("target_id", ""))
+        for i, sg in enumerate(segs):
+            for d in DIRS:
+                if sg[d] == tid:
+                    target = {"seg": i, "dir": d}
+        if target is None and tid in order:
+            target = {"station": order.index(tid)}
+        win = [i for i, t in enumerate(slots) if rec["start"] <= t < rec["end"]]
+        rec = {
+            "title": rec["title"],
+            "where": rec.get("target", ""),
+            "window": rec.get("window", ""),
+            "reason": rec.get("reason", ""),
+            "mock": bool(rec.get("is_mock")),
+            "target": target,
+            "slots": win,
+        }
+    return {
+        "times": [f"{to_msk(t):%H:%M}" for t in slots],
+        "stations": [names.get(s, s) for s in order],
+        "segs": [{"label": s["label"], "tip": s["tip"]} for s in segs],
+        "fill": fill,
+        "demand": demand,
+        "rec": rec,
+    }
+
+
+LOAD_HTML = Path(__file__).parent / "assets" / "load_player.html"
+
+
+def load_html(payload: dict[str, Any]) -> str:
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return LOAD_HTML.read_text(encoding="utf-8").replace("__PAYLOAD__", data)
