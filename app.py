@@ -26,6 +26,7 @@ from metro_control.timeline import (
     Player,
     actions_until,
     compare_frame,
+    find_sim_dir,
     frame,
     load_timeline,
     reset,
@@ -227,22 +228,35 @@ def read_actions(path: Path) -> list[dict]:
         return out
     for ln in lines:
         try:
-            out.append(json.loads(ln))
+            row = json.loads(ln)
         except json.JSONDecodeError:
             continue
+        if isinstance(row, dict):
+            out.append(row)
     return out
 
 
 def sim_tab():
     hint = "Запустите: `uv run metro-control compare --scenario rail_surge`"
-    tl, reason = load_timeline(run_dir)
+    sim_dir = find_sim_dir(os.environ.get("METRO_SIM_DIR"), Path("runs"))
+    if sim_dir is None:
+        st.info("Нет записи симуляции (runs/compare-* не найден).")
+        st.info(hint)
+        return
+    st.caption(str(sim_dir))
+    tl, reason = load_timeline(sim_dir)
     if tl is None:
         st.info(f"Нет записи симуляции ({reason}).")
         st.info(hint)
         return
-    actions = read_actions(run_dir / "actions.jsonl")
-    if "player" not in st.session_state or st.session_state["player"].n_frames != tl.n_frames:
+    actions = read_actions(sim_dir / "actions.jsonl")
+    if (
+        "player" not in st.session_state
+        or st.session_state["player"].n_frames != tl.n_frames
+        or st.session_state.get("sim_run_id") != tl.run_id
+    ):
         st.session_state["player"] = Player(n_frames=tl.n_frames)
+        st.session_state["sim_run_id"] = tl.run_id
 
     def act(fn):
         st.session_state["player"] = fn(st.session_state["player"])
@@ -257,7 +271,7 @@ def sim_tab():
         "Политика: mock (демо-политика, не рекомендация ML). Воспроизведение записи compare."
     )
     try:
-        mx = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))["payload"]
+        mx = json.loads((sim_dir / "metrics.json").read_text(encoding="utf-8"))["payload"]
         st.caption(
             f"Итог дня ({tl.scenario}, {tl.date}): ожидание, пасс·мин — "
             f"без управления {mx['baseline']['wait_pax_min']:,.0f}, "

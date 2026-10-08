@@ -178,7 +178,30 @@ def _parse(s: str) -> datetime:
 
 def actions_until(actions: list[dict[str, Any]], t_utc: datetime) -> list[dict[str, Any]]:
     """Actions decided strictly before t: frame k is recorded before the policy acts at k."""
-    return [a for a in actions if _parse(a["as_of"]) < t_utc]
+    out = []
+    for a in actions:
+        if not isinstance(a, dict):
+            continue
+        try:
+            ts = _parse(a["as_of"])
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        if ts < t_utc:
+            out.append(a)
+    return out
+
+
+def find_sim_dir(env_value: str | None, runs_root: Path) -> Path | None:
+    if env_value:
+        return Path(env_value)
+    if not runs_root.is_dir():
+        return None
+    for d in sorted(runs_root.glob("compare-*"), key=lambda x: x.name, reverse=True):
+        if (d / FILE).is_file():
+            return d
+    return None
 
 
 @dataclass(frozen=True)
