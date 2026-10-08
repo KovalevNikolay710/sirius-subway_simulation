@@ -18,7 +18,7 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - Work in slices from `docs/backlog.md` via `/next-slice`: the main session orchestrates, the `slice-implementer` subagent (sonnet) writes code, `ecc:python-reviewer` reviews.
 - Logic is pure Python in `src/metro_control/`; `app.py` only reads results and draws. No Streamlit imports in the package.
 - UI: style, components and acceptance checklist in `docs/design.md` (skill `metro-ui`); shared player code in `src/metro_control/assets/ui.css` + `ui.js`, never copied into a player. Slice IDs: `S…` features, `U…` UI, `C…` contracts, `A…` adapters, `H…` harness, `M…` migration.
-- Contracts in `contracts/v0_1/` change only with a version bump and a CHANGELOG entry; other people copy them.
+- Contracts in `contracts/v0_2/` change only with a version bump and a CHANGELOG entry; other people copy them.
 - Every numeric parameter not given by organizers goes to `config/assumptions.json` with `source` and `version`. Never hide an assumption in code.
 - Times are stored in UTC, shown in Europe/Moscow. Intervals are `[start, end)`, 15 min.
 - No knowledge of the future: a decision at time T may read only data available at T. Demand (truth) is separate from forecast.

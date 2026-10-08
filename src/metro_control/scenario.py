@@ -30,7 +30,7 @@ def _hm(s: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def _msk_clock_min(col: str = "interval_start") -> pl.Expr:
+def _msk_clock_min(col: str = "ts") -> pl.Expr:
     """Minutes since 00:00 MSK of the calendar day for a UTC slot start."""
     t = pl.col(col).dt.convert_time_zone("Europe/Moscow")
     return t.dt.hour().cast(pl.Int64) * 60 + t.dt.minute().cast(pl.Int64)
@@ -62,11 +62,11 @@ def apply_scenario(entries_day: pl.DataFrame, spec: dict[str, Any]) -> pl.DataFr
         )
         moved = (
             entries_day.filter(win)
-            .with_columns(pl.col("interval_start") + pl.duration(minutes=steps * SLOT_MIN))
-            .select("station_id", "interval_start", pl.col("entries").alias("moved"))
+            .with_columns(pl.col("ts") + pl.duration(minutes=steps * SLOT_MIN))
+            .select("station_id", "ts", pl.col("entries").alias("moved"))
         )
         out = (
-            stay.join(moved, on=["station_id", "interval_start"], how="left")
+            stay.join(moved, on=["station_id", "ts"], how="left")
             .with_columns((pl.col("entries") + pl.col("moved").fill_null(0.0)).alias("entries"))
             .drop("moved")
         )
@@ -217,14 +217,14 @@ def compare(
     """
     spec = assumptions["scenarios"]["value"][scenario]
     d = date.fromisoformat(spec["date"])
-    utc_day = pl.col("interval_start").dt.convert_time_zone("UTC").dt.date()
+    utc_day = pl.col("ts").dt.convert_time_zone("UTC").dt.date()
     day = entries.filter(utc_day == d)
     if day.height == 0:
         raise ValueError(f"no entries for {d}")
     truth = apply_scenario(day, spec)
     params, demand, trips, origin, dtype = build_day(truth, truth, line, od_params, assumptions)
     others = entries.filter(utc_day != d)
-    history_all = pl.concat([others, truth.select(others.columns)]).sort("interval_start")
+    history_all = pl.concat([others, truth.select(others.columns)]).sort("ts")
     init = new_state(params, [], 0.0, trips)
     n_slots = int(DAY_END_MIN) // SLOT_MIN
     frames: dict[str, list[dict[str, Any]]] = {"baseline": [], "policy": []}
@@ -248,7 +248,7 @@ def compare(
         b_mark, p_mark = len(baseline.log), len(st.log)
         if k == n_slots:
             break
-        hist = history_all.filter(pl.col("interval_start") < as_of)
+        hist = history_all.filter(pl.col("ts") < as_of)
         sg, sw = _surge_for(spec, d, as_of)
         rec: Any = None
         if policy_fn is None and forecast_fn is None:
@@ -319,15 +319,13 @@ def compare(
             st, params, origin, sum(ex.reserves_left.values()), f"{run_id}-policy"
         ),
     }
-    day_sorted = day.sort(["interval_start", "station_id"])
+    day_sorted = day.sort(["ts", "station_id"])
     manifest = {
         "run_id": run_id,
         "scenario": scenario,
         "date": d.isoformat(),
         "entries_sha256": _sha(day_sorted.write_csv().encode()),
-        "all_entries_sha256": _sha(
-            entries.sort(["interval_start", "station_id"]).write_csv().encode()
-        ),
+        "all_entries_sha256": _sha(entries.sort(["ts", "station_id"]).write_csv().encode()),
         "spec_sha256": _sha(json.dumps(spec, sort_keys=True).encode()),
         "assumptions_sha256": _sha(json.dumps(assumptions, sort_keys=True).encode()),
         "policy": policy_label,

@@ -1,11 +1,11 @@
-"""Regenerate contracts/v0_1/examples from metro_control.examples."""
+"""Regenerate contracts/v0_2/examples from metro_control.examples."""
 
 import json
 from pathlib import Path
 
 from metro_control import examples as ex
 
-root = Path(__file__).resolve().parents[1] / "contracts" / "v0_1" / "examples"
+root = Path(__file__).resolve().parents[1] / "contracts" / "v0_2" / "examples"
 valid = {
     "forecast": ex.forecast(),
     "forecast_no_quantiles": ex.forecast(False),

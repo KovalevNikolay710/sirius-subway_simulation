@@ -1,0 +1,21 @@
+{
+ "schema_version": "0.2",
+ "kind": "recommendation",
+ "run_id": "example-run-001",
+ "generated_at": "2026-09-30T09:00:00Z",
+ "data_mode": "mock",
+ "manifest": {
+  "source": "synthetic example",
+  "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ "payload": {
+  "recommendation_id": "rec-001",
+  "as_of": "2026-09-30T09:00:00Z",
+  "action": "add_reserve",
+  "target": "chernyshevskaya",
+  "start": "2026-09-30T08:45:00Z",
+  "end": "2026-09-30T09:15:00Z",
+  "reason": "mock: load ratio above threshold",
+  "source": "mock"
+ }
+}

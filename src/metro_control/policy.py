@@ -14,7 +14,7 @@ from metro_control.line import station_ids as _station_ids
 
 DEPOT_NORTH = "avtovo"
 DEPOT_SOUTH = "severnoye"
-_FALLBACK_SEGMENT = "veteranov__leninsky_prospekt"  # first line segment
+_FALLBACK_SEGMENT = "prospekt_veteranov__leninsky_prospekt"  # first line segment
 
 
 @dataclass(frozen=True)
@@ -72,9 +72,7 @@ def mock_policy(
     horizon = timedelta(minutes=float(mock._assumption("control_horizon_min")))  # type: ignore[arg-type]
     window = float(mock._assumption("policy_action_window_min"))  # type: ignore[arg-type]
 
-    rows = [
-        r for r in load.payload if r.r is not None and as_of <= r.interval_start < as_of + horizon
-    ]
+    rows = [r for r in load.payload if r.r is not None and as_of <= r.ts < as_of + horizon]
     best: dict[str, tuple[float, str]] = {}  # direction -> (max r, segment)
     for r in rows:
         d = segment_direction(r.segment_id)

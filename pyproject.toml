@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "fastexcel>=0.21.0",
+    "jsonschema>=4.26.0",
     "numpy>=2.4.6",
     "openpyxl>=3.1.5",
     "plotly>=7.1.0",

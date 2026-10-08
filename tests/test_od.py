@@ -112,7 +112,7 @@ def test_segment_demand_shape_transfer_mirror_immutable():
     before = e.clone()
     d = segment_demand(e, e, line, _params())
     assert d.height == 3 * 4 and (d["demand"] >= 0).all()
-    assert d.schema["interval_start"] == pl.Datetime("us", "UTC")
+    assert d.schema["ts"] == pl.Datetime("us", "UTC")
     assert e.equals(before)
     # transfer factor 2 on station 0 doubles its origin contribution on the north seg 0
     d2 = segment_demand(e, e, line, _params({line.stations[1].id: 1.0}))
@@ -127,7 +127,7 @@ def test_segment_demand_shape_transfer_mirror_immutable():
     assert f["demand"].sum() > g["demand"].sum()
     # mirror: only evening differs; morning slot result changes, midday does not
     e_b = _entries(line, [8, 12, 18], lambda h: [100, 50, 80] if h != 18 else [100, 50, 800])
-    mid = pl.col("interval_start").dt.convert_time_zone("Europe/Moscow").dt.hour()
+    mid = pl.col("ts").dt.convert_time_zone("Europe/Moscow").dt.hour()
     da = segment_demand(e, e, line, _params())
     db = segment_demand(e, e_b, line, _params())
     assert not np.allclose(
@@ -237,10 +237,10 @@ def test_mirror_fallback_and_no_data():
 
 def test_sanity_mixed_day_type_and_unsorted():
     line, e = _day19()
-    ok = e.sort("interval_start", descending=True)  # first row is the late 00:15 MSK slot
+    ok = e.sort("ts", descending=True)  # first row is the late 00:15 MSK slot
     assert sanity_report(ok, line, load_od_params()).height == 20
     mixed = e.with_columns(
-        pl.when(pl.col("interval_start") == e["interval_start"][100])
+        pl.when(pl.col("ts") == e["ts"][100])
         .then(pl.lit("sunday"))
         .otherwise(pl.col("day_type"))
         .alias("day_type")

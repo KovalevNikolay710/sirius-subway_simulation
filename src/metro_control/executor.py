@@ -21,7 +21,7 @@ from metro_control.sim import (
 )
 from metro_control.timeutil import MSK
 
-TERMINAL = {NORTH: "veteranov", "south": "devyatkino"}
+TERMINAL = {NORTH: "prospekt_veteranov", "south": "devyatkino"}
 Status = Literal["applied", "rejected", "duplicate", "noop"]
 
 

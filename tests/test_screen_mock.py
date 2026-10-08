@@ -62,19 +62,16 @@ def test_band_boundaries():
 
 def test_synthetic_shape(entries):
     assert entries.height == 19 * 96 * 28
-    assert set(entries.columns) == {"station_id", "interval_start", "day_type", "entries"}
+    assert set(entries.columns) == {"station_id", "ts", "day_type", "entries"}
 
 
 def test_forecast_ignores_future_and_valid(entries, as_of):
     base = mock_forecast(entries, as_of)
     assert len(base.payload.rows) == 152
     assert base.data_mode == "mock" and base.payload.status == "mock"
-    assert base.payload.model_name == "mock-median"
+    assert base.payload.rows[0].model_version == "mock_percentile_v1"
     poisoned = entries.with_columns(
-        pl.when(pl.col("interval_start") >= as_of)
-        .then(1e9)
-        .otherwise(pl.col("entries"))
-        .alias("entries")
+        pl.when(pl.col("ts") >= as_of).then(1e9).otherwise(pl.col("entries")).alias("entries")
     )
     assert mock_forecast(poisoned, as_of).payload.rows == base.payload.rows
 
@@ -126,7 +123,7 @@ def test_bundle_valid_and_bands(bundle_dir, as_of):
         bands |= set(v["band"].to_list())
     assert {"low", "mid", "high"} <= bands
     ent = res["station_entries"].package.payload
-    assert all(r.interval_start < as_of for r in ent)
+    assert all(r.ts < as_of for r in ent)
 
 
 def test_load_package_reasons(bundle_dir, tmp_path):
@@ -147,11 +144,11 @@ def test_station_series_drops_future(bundle_dir, as_of):
     res = load_bundle(bundle_dir)
     ent = res["station_entries"].package
     late = ent.model_copy(deep=True)
-    row = late.payload[0].model_copy(update={"interval_start": as_of})
+    row = late.payload[0].model_copy(update={"ts": as_of})
     late.payload.append(row)
     s = station_series(late, res["forecast"].package, late.payload[0].station_id)
     facts = s.filter(pl.col("kind") == "fact")
-    assert facts.height and facts["interval_start"].max() < as_of
+    assert facts.height and facts["ts"].max() < as_of
     assert s.filter(pl.col("kind") == "forecast").height == 8
 
 
@@ -211,7 +208,7 @@ def test_service_day_type_per_slot(entries):
     as_of = datetime(2026, 9, 25, 21, 30, tzinfo=UTC)
     fc = mock_forecast(entries, as_of)
     ld = mock_load(fc, entries, line, params, "weekday", {})
-    dep = {r.interval_start: r.departures for r in ld.payload}
+    dep = {r.ts: r.departures for r in ld.payload}
     assert dep[as_of] == 2  # 00:30 MSK Sat is Friday service day: hour 24, pairs[19]=7
     sat = datetime(2026, 9, 26, 5, 0, tzinfo=UTC)  # 08:00 MSK Saturday: weekend pairs[3]=21
     ld2 = mock_load(
@@ -284,7 +281,7 @@ def test_load_payload_and_rec_targets(bundle_dir):
         for r in items
     ]
     p = load_payload(lp, names, marks)
-    t = len({r.interval_start for r in lp.payload})
+    t = len({r.ts for r in lp.payload})
     assert len(p["times"]) == t and p["stations"][0] == "Девяткино"
     assert all(len(row) == t for d in ("north", "south") for row in p["fill"][d])
     assert [r["n"] for r in p["recs"]] == list(range(1, len(items) + 1))
@@ -402,7 +399,7 @@ def test_rec_evidence_y_max(bundle_dir, rs, y_max):
             update={
                 "segment_id": rec.payload.target,
                 "r": r,
-                "interval_start": base.interval_start + timedelta(minutes=15 * i),
+                "ts": base.ts + timedelta(minutes=15 * i),
             }
         )
         for i, r in enumerate(rs)

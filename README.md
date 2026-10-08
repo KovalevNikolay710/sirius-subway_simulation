@@ -25,10 +25,11 @@ What the screen needs, who provides it and in which format: [`docs/data_guide.md
 Upload on the «Данные» tab: a whole ZIP (organizer archive, team pack or both) or files one by one.
 
 ## Team packages
-- Person 2 forecast: `.csv` / `.parquet` with columns `station_id`, `interval_start` (tz-aware ISO, e.g. `2026-09-28T14:30:00Z`),
-  `q50` and optional `q10`, `q90`; exactly 19 stations x 8 slots = 152 rows. Without `q10`/`q90` the quantiles are not ready.
+- Person 2 forecast: `.csv` / `.parquet` with columns `station_id`, `ts` (tz-aware ISO, e.g. `2026-09-28T14:30:00Z`),
+  `q50` and optional `q10`, `q90`, `baseline`, `is_anomaly`, `model_version`, `horizon_min`
+  (missing `baseline` falls back to q50, a placeholder until A1; `horizon_min` must equal ts - as_of + 15 min); exactly 19 stations x 8 slots = 152 rows. Without `q10`/`q90` the quantiles are not ready.
   A full contract JSON (`kind: forecast`) is accepted too.
-- `--forecast-as-of <ISO with offset>` overrides the forecast start (default: earliest `interval_start`).
+- `--forecast-as-of <ISO with offset>` overrides the forecast start (default: earliest `ts`).
 - Person 4 recommendation: JSON, either a full contract envelope or just the payload (`recommendation_id`, `as_of`,
   `action`, `target`, `start`, `end`, `reason`).
 - Person 4 explanation: UTF-8 text `explanation.txt`, shown on the recommendation card.
@@ -61,8 +62,8 @@ Forecast, load and recommendation in the demo bundle are `mock`.
 ```bash
 uv run metro-control load-entries        # organizer Excel → data/processed/station_entries.parquet
 uv run metro-control od-sanity           # OD + segment load vs planned capacity
-uv run metro-control validate runs/demo  # check files against contracts v0.1
-uv run metro-control export-schemas      # write JSON Schemas for contracts v0.1
+uv run metro-control validate runs/demo  # check files against contracts v0.2
+uv run metro-control export-schemas      # write JSON Schemas for contracts v0.2
 ```
 
 See `docs/plan.md` for the plan and `docs/backlog.md` for progress.

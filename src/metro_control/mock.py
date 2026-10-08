@@ -42,7 +42,7 @@ def _iso(dt: datetime) -> str:
 def _envelope(kind: str, run_id: str, as_of: datetime, source: str) -> dict:
     digest = hashlib.sha256(source.encode()).hexdigest()
     return {
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "kind": kind,
         "run_id": run_id,
         "generated_at": _iso(as_of),
@@ -86,7 +86,7 @@ def synthetic_entries(start: date, days: int) -> pl.DataFrame:
     return pl.DataFrame(
         {
             "station_id": rows_s,
-            "interval_start": rows_t,
+            "ts": rows_t,
             "day_type": rows_d,
             "entries": rows_v,
         },
@@ -98,17 +98,18 @@ def mock_forecast(history: pl.DataFrame, as_of: datetime) -> ForecastPackage:
     """Percentiles of history by station x MSK clock slot x day_type, only rows < as_of."""
     line = load_line()
     holidays = load_holidays()
-    past = history.filter(pl.col("interval_start") < as_of)
-    t = pl.col("interval_start").dt.convert_time_zone("Europe/Moscow")
+    past = history.filter(pl.col("ts") < as_of)
+    t = pl.col("ts").dt.convert_time_zone("Europe/Moscow")
     cols = (
         pl.col("entries").quantile(0.1, "linear").alias("q10"),
         pl.col("entries").quantile(0.5, "linear").alias("q50"),
         pl.col("entries").quantile(0.9, "linear").alias("q90"),
+        pl.col("entries").mean().alias("mean"),
     )
     clock = (t.dt.hour().cast(pl.Int64) * 60 + t.dt.minute().cast(pl.Int64)).alias("c")
     any_type = {
-        (s, c): (a, b, e)
-        for s, c, a, b, e in past.with_columns(clock)
+        (s, c): (a, b, e, m_)
+        for s, c, a, b, e, m_ in past.with_columns(clock)
         .group_by("station_id", "c")
         .agg(*cols)
         .iter_rows()
@@ -121,7 +122,7 @@ def mock_forecast(history: pl.DataFrame, as_of: datetime) -> ForecastPackage:
         .agg(*cols)
     )
     degraded = False
-    look = {(s, c, d): (a, b, e) for s, c, d, a, b, e in stats.iter_rows()}
+    look = {(s, c, d): (a, b, e, m_) for s, c, d, a, b, e, m_ in stats.iter_rows()}
     rows = []
     for st in sorted(line.stations, key=lambda s: s.order):
         for k in range(N_SLOTS):
@@ -131,19 +132,22 @@ def mock_forecast(history: pl.DataFrame, as_of: datetime) -> ForecastPackage:
             c = m.hour * 60 + m.minute
             q = look.get((st.id, c, dt)) or any_type.get((st.id, c))
             if q is None:
-                q, degraded = (0.0, 0.0, 0.0), True
+                q, degraded = (0.0, 0.0, 0.0, 0.0), True
             rows.append(
                 {
                     "station_id": st.id,
-                    "interval_start": _iso(slot),
+                    "ts": _iso(slot),
                     "q10": float(q[0]),
                     "q50": float(q[1]),
                     "q90": float(q[2]),
+                    "horizon_min": 15 * (k + 1),
+                    "baseline": float(q[3]),
+                    "is_anomaly": False,
+                    "model_version": "mock_percentile_v1",
                 }
             )
     payload = {
         "as_of": _iso(as_of),
-        "model_name": "mock-median",
         "status": "degraded" if degraded else "mock",
         "quantiles_ready": True,
         "rows": rows,
@@ -179,23 +183,23 @@ def mock_load(
     as_of = forecast.payload.as_of
 
     def _f(r) -> float:  # noqa: ANN001
-        if surge_window is not None and not surge_window[0] <= r.interval_start < surge_window[1]:
+        if surge_window is not None and not surge_window[0] <= r.ts < surge_window[1]:
             return 1.0
         return surge.get(r.station_id, 1.0)
 
     entries = pl.DataFrame(
         {
             "station_id": [r.station_id for r in forecast.payload.rows],
-            "interval_start": [r.interval_start for r in forecast.payload.rows],
+            "ts": [r.ts for r in forecast.payload.rows],
             "entries": [r.q50 * _f(r) for r in forecast.payload.rows],
         },
         schema={
             "station_id": pl.String,
-            "interval_start": pl.Datetime("us", "UTC"),
+            "ts": pl.Datetime("us", "UTC"),
             "entries": pl.Float64,
         },
     )
-    attraction = history.filter(pl.col("interval_start") < as_of)
+    attraction = history.filter(pl.col("ts") < as_of)
     dem = {
         (sid, t): v
         for sid, t, v in od.segment_demand(entries, attraction, line, params).iter_rows()
@@ -211,7 +215,7 @@ def mock_load(
             rows.append(
                 {
                     "segment_id": seg.id,
-                    "interval_start": _iso(slot),
+                    "ts": _iso(slot),
                     "demand": d,
                     "departures": dep,
                     "capacity_per_train": cap,
@@ -238,7 +242,7 @@ def mock_recommendations(
     payloads = []
     for w in ranked:
         seg = w.segment_id
-        start = min(r.interval_start for r in over if r.segment_id == seg)
+        start = min(r.ts for r in over if r.segment_id == seg)
         payloads.append(
             {
                 "action": "add_reserve",
@@ -282,13 +286,13 @@ def mock_recommendation(load: LoadPackage, as_of: datetime) -> Recommendation:
 
 def default_as_of(entries: pl.DataFrame) -> datetime:
     """17:30 MSK of the last weekday in entries that has a 17:30 slot."""
-    t = pl.col("interval_start").dt.convert_time_zone("Europe/Moscow")
+    t = pl.col("ts").dt.convert_time_zone("Europe/Moscow")
     cand = entries.filter(
         (pl.col("day_type") == "weekday") & (t.dt.hour() == 17) & (t.dt.minute() == 30)
     )
     if cand.height == 0:
         raise ValueError("no weekday 17:30 MSK slot in entries")
-    return cand["interval_start"].max()
+    return cand["ts"].max()
 
 
 def mark_entries_real(
@@ -329,18 +333,16 @@ def build_mock_bundle(
         hour=3, minute=0, second=0, microsecond=0
     )
     day_start = day_start.astimezone(UTC)
-    fact = entries.filter(
-        (pl.col("interval_start") >= day_start) & (pl.col("interval_start") < as_of)
-    )
+    fact = entries.filter((pl.col("ts") >= day_start) & (pl.col("ts") < as_of))
     rows = [
         {
             "station_id": s,
-            "interval_start": _iso(t),
+            "ts": _iso(t),
             "day_type": d,
             "entries": float(v),
         }
-        for s, t, d, v in fact.select("station_id", "interval_start", "day_type", "entries")
-        .sort("interval_start", "station_id")
+        for s, t, d, v in fact.select("station_id", "ts", "day_type", "entries")
+        .sort("ts", "station_id")
         .iter_rows()
     ]
     env = _envelope("station_entries", f"mock-{_iso(as_of)}", as_of, "mock: service day facts")

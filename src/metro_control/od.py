@@ -74,7 +74,7 @@ def _minutes(hhmm: str) -> int:
 
 
 def _msk_minutes(df: pl.DataFrame) -> np.ndarray:
-    t = df["interval_start"].dt.convert_time_zone("Europe/Moscow")
+    t = df["ts"].dt.convert_time_zone("Europe/Moscow")
     return (t.dt.hour().cast(pl.Int64) * 60 + t.dt.minute().cast(pl.Int64)).to_numpy()
 
 
@@ -117,10 +117,10 @@ def slot_od(
             raise ValueError(f"null values in {name}.entries")
     factor = np.array([params.transfer_factor.get(s.id, 1.0) for s in stations])
 
-    slots = entries["interval_start"].unique().sort()
+    slots = entries["ts"].unique().sort()
     pos = {t: i for i, t in enumerate(slots.to_list())}
     o = np.zeros((len(slots), n))
-    rows = entries.select("station_id", "interval_start", "entries").iter_rows()
+    rows = entries.select("station_id", "ts", "entries").iter_rows()
     for sid, t, v in rows:
         if sid in index:
             o[pos[t], index[sid]] += v
@@ -138,7 +138,7 @@ def slot_od(
     }
     times = travel_times(n, params.hop_min)
 
-    sm = _msk_minutes(pl.DataFrame({"interval_start": slots}))
+    sm = _msk_minutes(pl.DataFrame({"ts": slots}))
     kind = np.where((sm >= m0) & (sm < m1), 0, np.where((sm >= e0) & (sm < e1), 1, 2))
     od = np.zeros((len(slots), n, n))
     for code, name in enumerate(("morning", "evening", "other")):
@@ -169,7 +169,7 @@ def segment_demand(
     n = len(line.stations)
     schema = {
         "segment_id": pl.String,
-        "interval_start": pl.Datetime("us", "UTC"),
+        "ts": pl.Datetime("us", "UTC"),
         "demand": pl.Float64,
     }
     if entries.height == 0:
@@ -189,7 +189,7 @@ def segment_demand(
             ids += [seg_n[k], seg_s[k]]
             starts += [t, t]
             dem += [north[i, k], south[i, k]]
-    return pl.DataFrame({"segment_id": ids, "interval_start": starts, "demand": dem}, schema=schema)
+    return pl.DataFrame({"segment_id": ids, "ts": starts, "demand": dem}, schema=schema)
 
 
 def sanity_report(entries: pl.DataFrame, line: LineRef, params: OdParams) -> pl.DataFrame:
@@ -213,7 +213,7 @@ def sanity_report(entries: pl.DataFrame, line: LineRef, params: OdParams) -> pl.
     wd = line.params["planned_pairs_weekday"].value
     we = line.params["planned_pairs_weekend"].value
 
-    msk = entries["interval_start"].dt.convert_time_zone("Europe/Moscow")
+    msk = entries["ts"].dt.convert_time_zone("Europe/Moscow")
     shifted = msk - pl.duration(hours=3)
     keyed = entries.with_columns(shifted.dt.date().alias("_date"))
     out = []
@@ -225,7 +225,7 @@ def sanity_report(entries: pl.DataFrame, line: LineRef, params: OdParams) -> pl.
         dt = types[0]
         pairs_list = wd if dt == "weekday" else we
         dem = segment_demand(day, day, line, params)
-        t = dem["interval_start"].dt.convert_time_zone("Europe/Moscow")
+        t = dem["ts"].dt.convert_time_zone("Europe/Moscow")
         h = t.dt.hour()
         dem = dem.with_columns(pl.when(h < 3).then(h + 24).otherwise(h).alias("hour"))
         hourly = (

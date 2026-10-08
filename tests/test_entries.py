@@ -99,29 +99,29 @@ def df(tmp_path_factory) -> pl.DataFrame:
 
 def test_shape_and_skip(df):
     assert df.height == 2 * 19 * 96
-    assert df.columns == ["station_id", "interval_start", "day_type", "entries"]
+    assert df.columns == ["station_id", "ts", "day_type", "entries"]
 
 
 def test_vestibules_summed(df):
     v = df.filter(
-        (pl.col("station_id") == "ploshchad_vosstaniya")
-        & (pl.col("interval_start") == datetime(2026, 9, 30, 0, 0, tzinfo=UTC))
+        (pl.col("station_id") == "vosstaniya")
+        & (pl.col("ts") == datetime(2026, 9, 30, 0, 0, tzinfo=UTC))
     )
     assert v["entries"].to_list() == [17.0]
     d = df.filter(
         (pl.col("station_id") == "devyatkino")
-        & (pl.col("interval_start") == datetime(2026, 9, 30, 0, 0, tzinfo=UTC))
+        & (pl.col("ts") == datetime(2026, 9, 30, 0, 0, tzinfo=UTC))
     )
     i1, i2 = VEST.index("Девяткино-1"), VEST.index("Девяткино-2")
     assert d["entries"].to_list() == [_value(i1, 0) + _value(i2, 0)]
 
 
 def test_time_conversion(df):
-    t = df.filter(pl.col("day_type") == "weekday")["interval_start"]
+    t = df.filter(pl.col("day_type") == "weekday")["ts"]
     assert t.min() == datetime(2026, 9, 30, 0, 0, tzinfo=UTC)
     assert t.max() == datetime(2026, 9, 30, 23, 45, tzinfo=UTC)
-    assert df["interval_start"].dtype == pl.Datetime("us", "UTC")
-    assert (df["interval_start"].dt.minute() % 15 == 0).all()
+    assert df["ts"].dtype == pl.Datetime("us", "UTC")
+    assert (df["ts"].dt.minute() % 15 == 0).all()
 
 
 def test_day_types(df):
@@ -132,7 +132,7 @@ def test_day_types(df):
     assert day_type(date(2026, 5, 9), HOLIDAYS) == "holiday"
     assert set(df["day_type"]) == {"weekday", "holiday"}
     # day type follows the service date: slots after midnight on 02.05 stay holiday
-    late = df.filter(pl.col("interval_start") == datetime(2026, 5, 1, 23, 45, tzinfo=UTC))
+    late = df.filter(pl.col("ts") == datetime(2026, 5, 1, 23, 45, tzinfo=UTC))
     assert set(late["day_type"]) == {"holiday"}
 
 
@@ -191,7 +191,7 @@ def test_wrong_letter_ok(tmp_path):
 def test_write_and_load_all(tmp_path):
     make_workbook(tmp_path / "Входные пассажиропотоки Линия 1 сен 2026 по 15-мин.xlsx")
     out = load_all(tmp_path, LINE, HOLIDAYS)
-    assert out["interval_start"].is_sorted()
+    assert out["ts"].is_sorted()
     dest = write_parquet(out, tmp_path / "a" / "b.parquet")
     assert pl.read_parquet(dest).height == out.height
     make_workbook(tmp_path / "Входные пассажиропотоки Линия 1 май 2026 по 15-мин.xlsx")
@@ -219,8 +219,8 @@ def test_cli_ok(tmp_path, capsys):
 def test_real_data():
     out = load_all(DEFAULT_RAW_DIR, LINE, HOLIDAYS)
     assert out.height == 120 * 19 * 96
-    assert not out.select("station_id", "interval_start").is_duplicated().any()
-    feb23 = out.filter(pl.col("interval_start") == datetime(2026, 2, 23, 0, 0, tzinfo=UTC))
+    assert not out.select("station_id", "ts").is_duplicated().any()
+    feb23 = out.filter(pl.col("ts") == datetime(2026, 2, 23, 0, 0, tzinfo=UTC))
     assert set(feb23["day_type"]) == {"holiday"}
 
 

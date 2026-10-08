@@ -1,0 +1,125 @@
+{
+ "$defs": {
+  "LoadRow": {
+   "additionalProperties": false,
+   "properties": {
+    "capacity_per_train": {
+     "default": 1458,
+     "exclusiveMinimum": 0,
+     "title": "Capacity Per Train",
+     "type": "number"
+    },
+    "demand": {
+     "minimum": 0,
+     "title": "Demand",
+     "type": "number"
+    },
+    "departures": {
+     "minimum": 0,
+     "title": "Departures",
+     "type": "integer"
+    },
+    "r": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "R"
+    },
+    "segment_id": {
+     "title": "Segment Id",
+     "type": "string"
+    },
+    "ts": {
+     "format": "date-time",
+     "title": "Ts",
+     "type": "string"
+    }
+   },
+   "required": [
+    "segment_id",
+    "ts",
+    "demand",
+    "departures"
+   ],
+   "title": "LoadRow",
+   "type": "object"
+  },
+  "Manifest": {
+   "additionalProperties": false,
+   "properties": {
+    "checksum": {
+     "title": "Checksum",
+     "type": "string"
+    },
+    "source": {
+     "title": "Source",
+     "type": "string"
+    }
+   },
+   "required": [
+    "source",
+    "checksum"
+   ],
+   "title": "Manifest",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "properties": {
+  "data_mode": {
+   "enum": [
+    "real",
+    "mock",
+    "synthetic"
+   ],
+   "title": "Data Mode",
+   "type": "string"
+  },
+  "generated_at": {
+   "format": "date-time",
+   "title": "Generated At",
+   "type": "string"
+  },
+  "kind": {
+   "const": "load",
+   "title": "Kind",
+   "type": "string"
+  },
+  "manifest": {
+   "$ref": "#/$defs/Manifest"
+  },
+  "payload": {
+   "items": {
+    "$ref": "#/$defs/LoadRow"
+   },
+   "title": "Payload",
+   "type": "array"
+  },
+  "run_id": {
+   "title": "Run Id",
+   "type": "string"
+  },
+  "schema_version": {
+   "const": "0.2",
+   "title": "Schema Version",
+   "type": "string"
+  }
+ },
+ "required": [
+  "schema_version",
+  "run_id",
+  "generated_at",
+  "data_mode",
+  "manifest",
+  "kind",
+  "payload"
+ ],
+ "title": "LoadPackage",
+ "type": "object"
+}

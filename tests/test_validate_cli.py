@@ -3,7 +3,7 @@ from pathlib import Path
 from metro_control.cli import export_schemas, main
 from metro_control.validate import validate_file
 
-EX = Path(__file__).resolve().parents[1] / "contracts" / "v0_1"
+EX = Path(__file__).resolve().parents[1] / "contracts" / "v0_2"
 
 
 def test_valid_examples():

@@ -37,8 +37,8 @@ def test_forecast_unknown_station():
 
 def test_forecast_past_interval():
     d = ex.forecast()
-    d["payload"]["rows"][0]["interval_start"] = "2026-09-30T08:45:00Z"
-    assert "interval_start" in _err(ForecastPackage, d)
+    d["payload"]["rows"][0]["ts"] = "2026-09-30T08:45:00Z"
+    assert "ts" in _err(ForecastPackage, d)
 
 
 def test_forecast_no_quantiles_requires_equal():
@@ -55,7 +55,7 @@ def test_envelope_failures():
     d["manifest"]["checksum"] = "md5:1"
     assert "checksum" in _err(Recommendation, d)
     d = ex.recommendation()
-    d["schema_version"] = "0.2"
+    d["schema_version"] = "0.1"
     assert "schema_version" in _err(Recommendation, d)
     d = ex.recommendation()
     d["extra"] = 1

@@ -1,4 +1,4 @@
-"""Shared contracts v0.1. Other team members copy this file; change only with a version bump."""
+"""Shared contracts v0.2. Other team members copy this file; change only with a version bump."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pydantic import (
 
 from metro_control.line import segment_ids, station_ids
 
-CONTRACT_VERSION = "0.1"
+CONTRACT_VERSION = "0.2"
 SLOT = timedelta(minutes=15)
 N_SLOTS = 8
 
@@ -69,7 +69,7 @@ class Manifest(_Model):
 
 
 class _Envelope(_Model):
-    schema_version: Literal["0.1"]
+    schema_version: Literal["0.2"]
     run_id: str
     generated_at: UtcDt
     data_mode: Literal["real", "mock", "synthetic"]
@@ -79,7 +79,7 @@ class _Envelope(_Model):
 # ---------- payload models ----------
 class StationEntriesRow(_Model):
     station_id: str
-    interval_start: SlotDt
+    ts: SlotDt
     day_type: Literal["weekday", "saturday", "sunday", "holiday"]
     entries: float = Field(ge=0)
 
@@ -88,12 +88,23 @@ class StationEntriesRow(_Model):
 
 class ForecastRow(_Model):
     station_id: str
-    interval_start: SlotDt
+    ts: SlotDt
+    horizon_min: int = Field(ge=15, le=120)
     q10: float = Field(ge=0)
     q50: float = Field(ge=0)
     q90: float = Field(ge=0)
+    baseline: float = Field(ge=0)
+    is_anomaly: bool
+    model_version: str = Field(min_length=1)
 
     _st = field_validator("station_id")(_check_station)
+
+    @field_validator("horizon_min")
+    @classmethod
+    def _h(cls, v: int) -> int:
+        if v % 15:
+            raise ValueError("horizon_min must be a multiple of 15")
+        return v
 
     @model_validator(mode="after")
     def _order(self) -> ForecastRow:
@@ -104,7 +115,6 @@ class ForecastRow(_Model):
 
 class ForecastPayload(_Model):
     as_of: SlotDt
-    model_name: str
     status: Literal["ok", "mock", "degraded"]
     quantiles_ready: bool
     rows: list[ForecastRow]
@@ -114,16 +124,17 @@ class ForecastPayload(_Model):
         n = len(station_ids()) * N_SLOTS
         if len(self.rows) != n:
             raise ValueError(f"rows: expected exactly {n} rows, got {len(self.rows)}")
-        keys = [(r.station_id, r.interval_start) for r in self.rows]
+        keys = [(r.station_id, r.ts) for r in self.rows]
         if len(set(keys)) != len(keys):
-            raise ValueError("rows: duplicate (station_id, interval_start)")
+            raise ValueError("rows: duplicate (station_id, ts)")
         allowed = {self.as_of + i * SLOT for i in range(N_SLOTS)}
-        bad = [r for r in self.rows if r.interval_start not in allowed]
+        bad = [r for r in self.rows if r.ts not in allowed]
         if bad:
-            raise ValueError(
-                f"interval_start {bad[0].interval_start.isoformat()} outside "
-                f"as_of + 0..{N_SLOTS - 1} slots"
-            )
+            raise ValueError(f"ts {bad[0].ts.isoformat()} outside as_of + 0..{N_SLOTS - 1} slots")
+        for r in self.rows:
+            exp = int((r.ts - self.as_of) / timedelta(minutes=1)) + 15
+            if r.horizon_min != exp:
+                raise ValueError(f"horizon_min must be {exp} for ts {r.ts.isoformat()}")
         if not self.quantiles_ready:
             for r in self.rows:
                 if not (r.q10 == r.q50 == r.q90):
@@ -133,7 +144,7 @@ class ForecastPayload(_Model):
 
 class LoadRow(_Model):
     segment_id: str
-    interval_start: SlotDt
+    ts: SlotDt
     demand: float = Field(ge=0)
     departures: int = Field(ge=0)
     capacity_per_train: float = Field(default=1458, gt=0)

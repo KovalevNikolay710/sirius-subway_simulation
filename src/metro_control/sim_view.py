@@ -164,8 +164,8 @@ def load_payload(
     """
     line = load_line()
     order = [s.id for s in sorted(line.stations, key=lambda s: s.order, reverse=True)]
-    slots = sorted({r.interval_start for r in load_pkg.payload})
-    rows = {(r.segment_id, r.interval_start): r for r in load_pkg.payload}
+    slots = sorted({r.ts for r in load_pkg.payload})
+    rows = {(r.segment_id, r.ts): r for r in load_pkg.payload}
     segs, fill, demand = [], {d: [] for d in DIRS}, {d: [] for d in DIRS}
     for i in range(len(order) - 1):
         up, down = order[i], order[i + 1]

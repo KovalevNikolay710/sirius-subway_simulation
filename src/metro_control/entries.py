@@ -25,7 +25,7 @@ _FIRST_ROW, _VEST_ROW, _SLOT_COL = 2, 3, 2
 
 SCHEMA = {
     "station_id": pl.String,
-    "interval_start": pl.Datetime("us", "UTC"),
+    "ts": pl.Datetime("us", "UTC"),
     "day_type": pl.String,
     "entries": pl.Float64,
 }
@@ -134,7 +134,7 @@ def _parse_sheet(
     return pl.DataFrame(
         {
             "station_id": [sid for sid in order for _ in range(N_SLOTS)],
-            "interval_start": [t for _ in order for t in starts],
+            "ts": [t for _ in order for t in starts],
             "day_type": [dt] * (len(order) * N_SLOTS),
             "entries": [v for sid in order for v in per_station[sid]],
         },
@@ -169,11 +169,11 @@ def load_workbooks(files: list[Path], line: LineRef, holidays: set[date]) -> pl.
     df = df.with_columns(
         pl.col("station_id").replace_strict(rank, return_dtype=pl.Int64).alias("_o")
     )
-    df = df.sort("interval_start", "_o").drop("_o")
-    dup = df.filter(df.select("station_id", "interval_start").is_duplicated())
+    df = df.sort("ts", "_o").drop("_o")
+    dup = df.filter(df.select("station_id", "ts").is_duplicated())
     if dup.height:
         r = dup.row(0)
-        raise ValueError(f"duplicate (station_id, interval_start): {r[0]} {r[1]}")
+        raise ValueError(f"duplicate (station_id, ts): {r[0]} {r[1]}")
     return df
 
 

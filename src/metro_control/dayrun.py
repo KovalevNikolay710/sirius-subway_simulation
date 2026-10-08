@@ -115,9 +115,9 @@ def build_day(
     types = entries_day["day_type"].unique().to_list()
     if len(types) != 1:
         raise ValueError(f"expected one day_type, got {sorted(types)}")
-    first = entries_day["interval_start"].min()
+    first = entries_day["ts"].min()
     d = first.astimezone(UTC).date()  # service day = one UTC calendar day (03:00 MSK start)
-    if entries_day["interval_start"].max().astimezone(UTC).date() != d:
+    if entries_day["ts"].max().astimezone(UTC).date() != d:
         raise ValueError("entries_day: rows span more than one service day")
     origin = service_origin(d)
     params = day_sim_params(line, assumptions)
