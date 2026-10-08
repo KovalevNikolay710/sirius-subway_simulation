@@ -34,7 +34,6 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - Commit messages: conventional (`feat(scope): …`, `fix: …`, `chore: …`, `docs: …`); merge commits `merge: <branch purpose>`.
 - Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice; own pytest + ruff gate, auto commit + merge + push `dev`;
   stops and notifies on a red gate, a `NEEDS_USER:` question or an unclean merge; `SLICE_CONFIRM=1` brings back the y/n prompt).
-- Design slices (Figma mockups) use the `figma` MCP server from the orchestrator session itself; see `/next-slice` step 1a.
 
 ## Token budget
 - Code is written by `slice-implementer` (sonnet); `haiku` for docs/fixture-only work. The main session writes briefs and verifies.
