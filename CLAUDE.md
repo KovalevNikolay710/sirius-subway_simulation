@@ -21,7 +21,8 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - Times are stored in UTC, shown in Europe/Moscow. Intervals are `[start, end)`, 15 min.
 - No knowledge of the future: a decision at time T may read only data available at T. Demand (truth) is separate from forecast.
 - Organizer data stays in `data/raw/` (git-ignored). Commit only code, contracts, configs and small synthetic fixtures.
-- Commit locally after green checks and the user's OK; never push without being asked.
+- Commit after green checks (pytest + ruff); no per-commit approval from the user — a supervisor reviews the pushed history.
+  Push `dev` to `origin` (github.com/KovalevNikolay710/sirius-subway_simulation) after each merge; `master` only when the user asks.
 - The orchestrator keeps `docs/plan.md` and `docs/backlog.md` current: small corrections itself (reported under "plan changes"),
   scope changes only after asking the user; every change gets a line in `docs/decisions.md`.
 
@@ -29,9 +30,11 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - `master` = releases only (demo-ready states); merged from `dev` only when the user asks. `dev` = integration branch, always green.
 - All work happens on a branch off `dev`: `feature/<slice-id>-<slug>` for backlog slices (e.g. `feature/S2-excel-loader`),
   `feature/<slug>` for tooling/harness, `fix/<slug>` for bug fixes. Never commit directly to `dev` or `master`.
-- Finish a branch: tests + ruff green on the branch → user's OK → `git switch dev && git merge --no-ff <branch>` → tests green on `dev` → `git branch -d <branch>`.
+- Finish a branch: tests + ruff green on the branch → `git switch dev && git merge --no-ff <branch>` → tests green on `dev` → `git branch -d <branch>` → `git push origin dev`.
 - Commit messages: conventional (`feat(scope): …`, `fix: …`, `chore: …`, `docs: …`); merge commits `merge: <branch purpose>`.
-- Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice, stops for approval before each commit and notifies).
+- Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice; own pytest + ruff gate, auto commit + merge + push `dev`;
+  stops and notifies on a red gate, a `NEEDS_USER:` question or an unclean merge; `SLICE_CONFIRM=1` brings back the y/n prompt).
+- Design slices (Figma mockups) use the `figma` MCP server from the orchestrator session itself; see `/next-slice` step 1a.
 
 ## Token budget
 - Code is written by `slice-implementer` (sonnet); `haiku` for docs/fixture-only work. The main session writes briefs and verifies.
