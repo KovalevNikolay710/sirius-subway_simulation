@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from metro_control.line import load_line
 from metro_control.screen import action_row
 from metro_control.timeline import KPI_KEYS, VARIANTS, Timeline, frame
 from metro_control.timeutil import to_msk
@@ -161,15 +162,13 @@ def player_html(payload: dict[str, Any]) -> str:
 
 
 def load_payload(
-    load_pkg: Any, names: dict[str, str], rec: dict[str, Any] | None
+    load_pkg: Any, names: dict[str, str], recs: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
     """Forecast segment load for the in-browser strip: fill[dir][seg][t] over the package slots.
 
-    `rec` (optional): {"title", "target" (segment or station id), "start", "end" (UTC datetimes),
-    "reason", "is_mock"} — highlighted on the strip during its window.
+    `recs`: [{"title", "target" (shown text), "target_id" (segment or station id), "start", "end"
+    (UTC datetimes), "window", "is_mock"}] — each is outlined on the strip during its window.
     """
-    from metro_control.line import load_line
-
     line = load_line()
     order = [s.id for s in sorted(line.stations, key=lambda s: s.order, reverse=True)]
     slots = sorted({r.interval_start for r in load_pkg.payload})
@@ -188,32 +187,29 @@ def load_payload(
         for d in DIRS:
             fill[d].append([getattr(rows.get((keys[d], t)), "r", None) for t in slots])
             demand[d].append([getattr(rows.get((keys[d], t)), "demand", None) for t in slots])
-    target = None
-    if rec:
+    where = {sg[d]: {"seg": i, "dir": d} for i, sg in enumerate(segs) for d in DIRS}
+    out_recs = []
+    for n, rec in enumerate(recs or [], 1):
         tid = str(rec.get("target_id", ""))
-        for i, sg in enumerate(segs):
-            for d in DIRS:
-                if sg[d] == tid:
-                    target = {"seg": i, "dir": d}
-        if target is None and tid in order:
-            target = {"station": order.index(tid)}
-        win = [i for i, t in enumerate(slots) if rec["start"] <= t < rec["end"]]
-        rec = {
-            "title": rec["title"],
-            "where": rec.get("target", ""),
-            "window": rec.get("window", ""),
-            "reason": rec.get("reason", ""),
-            "mock": bool(rec.get("is_mock")),
-            "target": target,
-            "slots": win,
-        }
+        target = where.get(tid) or ({"station": order.index(tid)} if tid in order else None)
+        out_recs.append(
+            {
+                "n": n,
+                "title": rec["title"],
+                "where": rec.get("target", ""),
+                "window": rec.get("window", ""),
+                "mock": bool(rec.get("is_mock")),
+                "target": target,
+                "slots": [i for i, t in enumerate(slots) if rec["start"] <= t < rec["end"]],
+            }
+        )
     return {
         "times": [f"{to_msk(t):%H:%M}" for t in slots],
         "stations": [names.get(s, s) for s in order],
         "segs": [{"label": s["label"], "tip": s["tip"]} for s in segs],
         "fill": fill,
         "demand": demand,
-        "rec": rec,
+        "recs": out_recs,
     }
 
 

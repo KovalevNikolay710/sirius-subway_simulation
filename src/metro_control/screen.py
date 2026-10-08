@@ -327,3 +327,74 @@ def action_row(ac: dict[str, Any], names: dict[str, str]) -> tuple[str, str, str
     elif target in names:
         target = names[target]
     return ACTION_RU.get(action, action), target, STATUS_RU.get(status, status)
+
+
+@dataclass(frozen=True)
+class RecList:
+    items: list[Recommendation]
+    problems: list[str]
+
+
+def load_recommendations(run_dir: Path | str, single: PackageResult | None = None) -> RecList:
+    """All recommendations of a run: `recommendations.jsonl` (one Recommendation package per line,
+    same v0.1 contract) plus `recommendation.json` if its id is not in the list. Bad lines are
+    skipped and reported, never raised."""
+    d = Path(run_dir)
+    items: list[Recommendation] = []
+    problems: list[str] = []
+    text = _read_text(d / "recommendations.jsonl")
+    for n, line in enumerate((text or "").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            items.append(Recommendation.model_validate_json(line))
+        except (ValidationError, ValueError) as e:
+            problems.append(f"recommendations.jsonl, строка {n}: {str(e).splitlines()[0]}")
+    single = (
+        single if single is not None else load_package(d / "recommendation.json", Recommendation)
+    )
+    ids = {r.payload.recommendation_id for r in items}
+    if single.ok and single.package.payload.recommendation_id not in ids:
+        items.insert(0, single.package)
+    return RecList(items, problems)
+
+
+def explanation_for(run_dir: Path | str, rec: Recommendation) -> tuple[str, str]:
+    """Person 4 text for this recommendation (`explanations/<id>.txt`, else `explanation.txt`),
+    or the recommendation's own reason."""
+    if rec.payload.source == "person4":
+        own = _read_text(Path(run_dir) / "explanations" / f"{rec.payload.recommendation_id}.txt")
+        if own:
+            return own, "person4"
+    return explanation_text(run_dir, rec)
+
+
+def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str, Any] | None:
+    """What backs a segment recommendation in the load package: r per slot, the window, the peak."""
+    if load_pkg is None:
+        return None
+    p = rec.payload
+    rows = sorted(
+        (r for r in load_pkg.payload if r.segment_id == p.target), key=lambda r: r.interval_start
+    )
+    if not rows:
+        return None
+    r_off, r_on = _thresholds()
+    known = [r for r in rows if r.r is not None]
+    peak = max(known, key=lambda r: r.r or 0.0) if known else None
+    return {
+        "times": [f"{to_msk(r.interval_start):%H:%M}" for r in rows],
+        "r": [r.r for r in rows],
+        "in_window": [p.start <= r.interval_start < p.end for r in rows],
+        "r_on": r_on,
+        "r_off": r_off,
+        "peak": None
+        if peak is None
+        else {
+            "time": f"{to_msk(peak.interval_start):%H:%M}",
+            "r": peak.r,
+            "demand": peak.demand,
+            "departures": peak.departures,
+            "capacity": peak.departures * peak.capacity_per_train,
+        },
+    }

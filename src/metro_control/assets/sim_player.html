@@ -45,6 +45,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 .scrub canvas { position: absolute; left: 0; top: 0; width: 100%; height: 44px; }
 .scrub .hours { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; color: #8994A3; font-size: 11px; }
 .scrub .hours i { position: absolute; transform: translateX(-50%); font-style: normal; }
+.keys { color: #8994A3; font-size: 11px; margin-top: 4px; }
 .thumb { position: absolute; top: -4px; width: 3px; height: 52px; margin-left: -1px; background: #fff; border-radius: 2px; pointer-events: none; box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
 .thumb::after { content: attr(data-t); position: absolute; top: -19px; left: 50%; transform: translateX(-50%);
   background: #fff; color: var(--ink); font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
@@ -125,6 +126,7 @@ svg text { font-family: inherit; }
       <div class="thumb" id="thumb" data-t="05:15"></div>
       <div class="hours" id="hours"></div>
     </div>
+    <div class="keys">Клавиши: ← → шаг 15 минут, Shift + ← → час, ↑ ↓ скорость, Home и End — начало и конец дня, пробел — пуск и пауза.</div>
   </section>
 
   <section class="panel">
@@ -154,7 +156,7 @@ svg text { font-family: inherit; }
     </div>
     <div class="panel">
       <div class="head"><h3>Решения политики по порядку</h3><span class="count" id="actCount"></span></div>
-      <div class="sub">Красная метка — решение снимает перегрузку. Нажмите на решение, чтобы перейти к его времени.</div>
+      <div class="sub">Список идёт вместе со временем. Красная метка — решение снимает перегрузку. Нажмите на решение, чтобы перейти к его времени.</div>
       <ul class="acts" id="acts"></ul>
     </div>
   </section>
@@ -187,7 +189,8 @@ function smooth(f) {
 const diffBand = (d) => d == null ? null : d < -0.05 ? C.good : d > 0.05 ? C.over : "#EEF1F4";
 const variantOf = () => state.mode === "baseline" ? "baseline" : "policy";
 const clampPos = (p) => Math.min(P.last, Math.max(P.first, p));
-function seek(p) { state.pos = clampPos(p); dirty = true; }
+let follow = true; // the decision list scrolls with time until the user scrolls it by hand
+function seek(p) { state.pos = clampPos(p); dirty = true; follow = true; }
 
 // Grab-and-drag to seek on any element; mapper turns a pointer position into a frame position (or null).
 function dragArea(elm, mapper, onStart) {
@@ -232,11 +235,22 @@ function drawOverview() {
 }
 dragArea($("scrub"), (cx) => { const r = $("scrub").getBoundingClientRect();
   return P.first + Math.min(1, Math.max(0, (cx - r.left) / r.width)) * (P.last - P.first + 1) - 0.5; });
-$("scrub").addEventListener("keydown", (e) => {
-  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
-  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+// Keyboard: ← → 15 min (Shift: 1 h), ↑ ↓ speed, Home/End, space play/pause.
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "SELECT") return;
+  const big = e.shiftKey ? 4 : 1;
+  switch (e.key) {
+    case " ": togglePlay(); break;
+    case "ArrowRight": step(big); break;
+    case "ArrowLeft": step(-big); break;
+    case "ArrowUp": setSpeed(1); break;
+    case "ArrowDown": setSpeed(-1); break;
+    case "Home": setPlaying(false); seek(P.first); break;
+    case "End": setPlaying(false); seek(P.last); break;
+    default: return;
+  }
+  e.preventDefault();
 });
-document.addEventListener("keydown", (e) => { if (e.key === " " && e.target.tagName !== "SELECT") { togglePlay(); e.preventDefault(); } });
 
 // ---------- heatmap ----------
 let HL = 170; const HT = 22, HB = 44, GAP = 16, ROW = 17;
@@ -437,11 +451,22 @@ function drawActs() {
   if (cur === curAct || !P.actions.length) return;
   const forward = cur > curAct; curAct = cur;
   [...items].forEach((li, n) => { li.classList.toggle("future", n > cur); li.classList.toggle("current", n === cur); });
-  if (cur >= 0) { const li = items[cur], ul = $("acts");
-    if (forward && state.playing) { li.classList.remove("flash"); void li.offsetWidth; li.classList.add("flash"); }
-    const top = li.offsetTop - ul.offsetTop;
-    if (top < ul.scrollTop || top > ul.scrollTop + ul.clientHeight - li.offsetHeight) ul.scrollTop = top - ul.clientHeight / 2; }
+  if (cur >= 0 && forward && state.playing) { const li = items[cur]; li.classList.remove("flash"); void li.offsetWidth; li.classList.add("flash"); }
 }
+
+// Where the decision list should be scrolled: between the last reached decision and the next one,
+// in proportion to time, so the list glides with the playhead instead of jumping.
+function actScrollTarget() {
+  const ul = $("acts"), items = ul.children, n = P.actions.length; if (!n || items.length < n) return null;
+  const mid = (i) => items[i].offsetTop + items[i].offsetHeight / 2;
+  let i = -1; P.actions.forEach((a, m) => { if (a.k <= state.pos) i = m; });
+  let c;
+  if (i < 0) c = mid(0);
+  else if (i >= n - 1) c = mid(n - 1);
+  else { const a = P.actions[i].k, b = P.actions[i + 1].k, f = b > a ? Math.min(1, (state.pos - a) / (b - a)) : 1; c = mid(i) + f * (mid(i + 1) - mid(i)); }
+  return Math.max(0, Math.min(ul.scrollHeight - ul.clientHeight, c - ul.clientHeight / 2));
+}
+["wheel", "touchmove"].forEach(ev => $("acts").addEventListener(ev, () => { follow = false; }, { passive: true }));
 
 // ---------- loop ----------
 function render() {
@@ -463,6 +488,8 @@ function loop(ts) {
   for (let i = 0; i < lift.length; i++) { const target = i === hover ? 1 : 0, d = target - lift[i];
     if (Math.abs(d) > 0.005) { lift[i] += d * Math.min(1, dt * 12); moving = true; } else lift[i] = target; }
   if (dirty || moving) { dirty = false; try { render(); } catch (e) { console.error(e); } }
+  if (follow) { const t = actScrollTarget(), ul = $("acts");
+    if (t != null && Math.abs(t - ul.scrollTop) > 0.5) ul.scrollTop += (t - ul.scrollTop) * Math.min(1, dt * 8); }
   requestAnimationFrame(loop);
 }
 function setPlaying(on) {
@@ -470,14 +497,18 @@ function setPlaying(on) {
   b.classList.toggle("on", state.playing); b.title = state.playing ? "Пауза (пробел)" : "Пуск (пробел)"; b.setAttribute("aria-label", state.playing ? "Пауза" : "Пуск");
   $("playIcon").innerHTML = state.playing ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
 }
-function togglePlay() { if (!state.playing && state.pos >= P.last) seek(P.first); setPlaying(!state.playing); }
+function togglePlay() { if (!state.playing && state.pos >= P.last) seek(P.first); follow = true; setPlaying(!state.playing); }
 function step(d) { setPlaying(false); seek(Math.round(state.pos) + d); }
 $("play").onclick = togglePlay;
 $("stop").onclick = () => { setPlaying(false); seek(P.first); };
 $("back").onclick = () => step(-1);
 $("next").onclick = () => step(1);
-$("speed").addEventListener("click", (e) => { const s = e.target.dataset.s; if (!s) return; state.speed = +s;
-  [...$("speed").children].forEach(b => b.classList.toggle("on", b === e.target)); });
+const SPEEDS = [1, 2, 4];
+function setSpeed(dir, exact) {
+  const i = SPEEDS.indexOf(state.speed), j = exact != null ? SPEEDS.indexOf(exact) : Math.min(SPEEDS.length - 1, Math.max(0, i + dir));
+  state.speed = SPEEDS[j]; [...$("speed").children].forEach(b => b.classList.toggle("on", +b.dataset.s === state.speed));
+}
+$("speed").addEventListener("click", (e) => { const s = e.target.dataset.s; if (s) setSpeed(0, +s); });
 $("mode").onchange = (e) => { state.mode = e.target.value; heatCache = null; ovCache = null; drawLegend(); dirty = true; };
 function drawLegend() {
   const items = state.mode === "diff"

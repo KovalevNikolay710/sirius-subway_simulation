@@ -20,8 +20,11 @@ from metro_control.figures import (
 from metro_control.line import load_line
 from metro_control.screen import (
     action_card,
-    explanation_text,
+    explanation_for,
+    fmt_int,
     load_bundle,
+    load_recommendations,
+    rec_evidence,
     source_statuses,
     station_series,
 )
@@ -87,6 +90,7 @@ load_pkg = bundle["load"].package if bundle["load"].ok else None
 fc_pkg = bundle["forecast"].package if bundle["forecast"].ok else None
 ent_pkg = bundle["station_entries"].package if bundle["station_entries"].ok else None
 rec_pkg = bundle["recommendation"].package if bundle["recommendation"].ok else None
+recs = load_recommendations(run_dir, bundle["recommendation"])
 
 
 def _ts(s: str) -> datetime:
@@ -97,44 +101,119 @@ def fmt(t) -> str:
     return f"{to_msk(t):%H:%M}"
 
 
+def evidence_figure(ev: dict) -> go.Figure:
+    """Bars of the target segment's forecast load per slot, threshold line, window shaded."""
+    colors = [
+        "#E9ECEF"
+        if r is None
+        else "#CFE3F3"
+        if r < 0.5
+        else CALM_HI
+        if r <= ev["r_off"]
+        else "#EA7125"
+        if r <= ev["r_on"]
+        else "#D6083B"
+        for r in ev["r"]
+    ]
+    fig = go.Figure(
+        go.Bar(
+            x=ev["times"],
+            y=[None if r is None else r * 100 for r in ev["r"]],
+            marker_color=colors,
+            hovertemplate="%{x}: загрузка %{y:.0f} %<extra></extra>",
+        )
+    )
+    win = [t for t, w in zip(ev["times"], ev["in_window"], strict=True) if w]
+    if win:
+        fig.add_vrect(
+            x0=win[0],
+            x1=win[-1],
+            fillcolor="#EA7125",
+            opacity=0.1,
+            line_width=0,
+            annotation_text="окно",
+            annotation_position="top left",
+        )
+    fig.add_hline(
+        y=ev["r_on"] * 100,
+        line=dict(color="#D6083B", dash="dash", width=1.5),
+        annotation_text=f"порог {ev['r_on']:.0%}",
+        annotation_position="top right",
+    )
+    fig.update_layout(
+        height=190,
+        margin=dict(l=10, r=10, t=24, b=10),
+        yaxis_title="загрузка, %",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        font=dict(family="Golos Text, sans-serif", color=INK, size=11),
+        xaxis=dict(type="category"),
+    )
+    return fig
+
+
 def forecast_tab():
     if load_pkg is None:
         st.info("Нет данных о загрузке (load.json недоступен).")
     elif not load_pkg.payload:
         st.info("Пакет загрузки пуст.")
     else:
-        rec = None
-        if rec_pkg is not None:
-            card = action_card(rec_pkg)
-            rec = dict(
-                card,
-                target_id=rec_pkg.payload.target,
-                start=rec_pkg.payload.start,
-                end=rec_pkg.payload.end,
+        marks = []
+        for rec in recs.items:
+            card = action_card(rec)
+            marks.append(
+                dict(
+                    card, target_id=rec.payload.target, start=rec.payload.start, end=rec.payload.end
+                )
             )
-        components.html(load_html(load_payload(load_pkg, names, rec)), height=455, scrolling=False)
+        components.html(
+            load_html(load_payload(load_pkg, names, marks)), height=455, scrolling=False
+        )
 
     left, right = st.columns(2, gap="medium")
 
-    with left, st.container(border=True, height=430):
-        st.subheader("Рекомендация")
-        if rec_pkg is None:
-            st.info("Нет рекомендации (recommendation.json недоступен).")
-        else:
-            card = action_card(rec_pkg)
-            with st.container():
-                st.markdown(f"#### {card['title']}")
-                if card["is_mock"]:
-                    st.caption(":grey[:material/info:] mock, демо-рекомендация")
-                st.write(f"**Цель:** {card['target']}")
-                st.write(f"**Окно:** {card['window']} МСК")
-                text, origin = explanation_text(run_dir, rec_pkg)
+    with left, st.container(border=True, height=470):
+        st.subheader(f"Рекомендации ({len(recs.items)})")
+        st.caption(
+            "Номера совпадают с метками на схеме выше. Откройте рекомендацию, "
+            "чтобы увидеть её обоснование."
+        )
+        for problem in recs.problems:
+            st.warning(problem)
+        if not recs.items:
+            st.info("Нет рекомендаций (recommendation.json и recommendations.jsonl недоступны).")
+        for n, rec in enumerate(recs.items, 1):
+            card = action_card(rec)
+            ev = rec_evidence(rec, load_pkg)
+            peak = ev["peak"] if ev else None
+            tail = f", пик {peak['r']:.0%}" if peak and peak["r"] is not None else ""
+            with st.expander(
+                f"{n}. {card['window']}  {card['title']}: {card['target']}{tail}",
+                expanded=n == 1,
+            ):
+                text, origin = explanation_for(run_dir, rec)
                 st.write(text)
                 st.caption(
-                    "Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации"
+                    ("Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации")
+                    + (", mock (демо-рекомендация)" if card["is_mock"] else "")
                 )
+                if ev is None:
+                    st.caption(
+                        "Обоснование по загрузке недоступно: цель не перегон или нет load.json."
+                    )
+                    continue
+                st.markdown("**Обоснование: прогноз загрузки целевого перегона**")
+                if peak:
+                    st.markdown(
+                        f"Пик **{peak['r']:.0%}** в {peak['time']}: "
+                        f"{fmt_int(peak['demand'])} пассажиров при вместимости "
+                        f"{fmt_int(peak['capacity'])} ({peak['departures']} поездов). "
+                        f"Порог для действия: {ev['r_on']:.0%}."
+                    )
+                st.plotly_chart(evidence_figure(ev), width="stretch", key=f"ev_{n}")
 
-    with right, st.container(border=True, height=430):
+    with right, st.container(border=True, height=470):
         st.subheader("Вход на станции")
         sid = st.selectbox(
             "Станция",
