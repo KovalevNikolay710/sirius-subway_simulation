@@ -85,6 +85,11 @@
 - Remote `origin` = https://github.com/KovalevNikolay710/sirius-subway_simulation.git. Пушится `dev`; `master` — только по просьбе пользователя. Push идёт через git, а не через GitHub MCP: MCP работает через API и локальную историю не пушит.
 - Макет в Figma (S8a) отменён (D37): экран сразу делается кодом в S9/S10; при необходимости позже добавим срез рефакторинга интерфейса.
 
+## Обновление 5 (2026-10-08, грилинг): окружение, UI-loop, формат команды
+Цель сервиса: диспетчеры заранее видят рост потока из-за погоды и событий. Live — Линия 1, дизайн показывает «всё метро» (переключатель линий, «Схема метро — скоро»).
+Срезы по порядку: H1 окружение → U1 исправления → U2 навигация [review] → C1 контракт v0.2 (схема прогноза команды, `ts`, их id станций) → A1 адаптер `serve --json` (час → 15 мин по `intrahour_profile.csv`) → U3 погода и события → U4 «до и после» по решению → S12 → M1 перенос в `dispatcher/` репо команды (ветка `dispatcher`, PR) [review].
+Стиль и чек-лист UI: `docs/design.md`; скилл `metro-ui`. Репо команды: Deniskish/metro-petersburg (LightGBM `src/serve.py`, почасовой q10/q50/q90, `explanations`, `meta`; контракт `data/predictions/contract.schema.json`; 18 станций, без Технологического института).
+
 ## Срезы (порядок)
 - S0 Харнесс + каркас (uv init, pyproject с CLI `metro-control`, git init, .gitignore, перенос файлов, CLAUDE.md, backlog, хук, команда).
 - S1 Контракты v0.1 + справочник линии (`config/line.json`: 19 станций, 36 перегонов, параметры с источниками) → `metro-control validate`; отдать команде.

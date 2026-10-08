@@ -1,0 +1,20 @@
+/* Shared tokens and base styles of the in-browser players (docs/design.md). Inlined into each iframe. */
+@font-face { font-family: "Golos Text"; src: url("/app/static/GolosText.ttf") format("truetype"); font-weight: 400 800; }
+:root {
+  --paper: #F4F5F7; --card: #FFFFFF; --rule: #E3E6EA; --ink: #1B2430; --muted: #6B7685;
+  --calm: #0078C9; --quiet: #CFE3F3; --tight: #EA7125; --over: #D6083B; --line1: #D6083B; --good: #009A49; --step: #702785;
+  --console: #0E2A47; --console-2: #1C3D60; --console-rule: #2B4D72;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Golos Text", system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; }
+.head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.panel h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--ink); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; border: 1px solid #C9CED6; }
+.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #EEF1F4; color: var(--muted); }
+.chip.good { background: #E0F3E8; color: var(--good); }
+.chip.bad { background: #FBE3E9; color: var(--over); }
+svg text { font-family: inherit; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

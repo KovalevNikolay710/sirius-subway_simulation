@@ -11,11 +11,13 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
 - `uv run pytest` — all tests (must stay < ~1 min)
 - `uv run ruff check . && uv run ruff format --check .`
 - `uv run metro-control doctor` — environment check; more subcommands appear per slice
-- `uv run streamlit run app.py` — dispatcher screen (from slice S4)
+- `uv run streamlit run app.py` — dispatcher screen
+- `uv run python scripts/ui_check.py --steps runs/briefs/<ID>.steps.json --out runs/ui/<ID>` — scripted UI check (starts the app, 0 JS errors expected)
 
 ## Rules
 - Work in slices from `docs/backlog.md` via `/next-slice`: the main session orchestrates, the `slice-implementer` subagent (sonnet) writes code, `ecc:python-reviewer` reviews.
 - Logic is pure Python in `src/metro_control/`; `app.py` only reads results and draws. No Streamlit imports in the package.
+- UI: style, components and acceptance checklist in `docs/design.md` (skill `metro-ui`); shared player code in `src/metro_control/assets/ui.css` + `ui.js`, never copied into a player. Slice IDs: `S…` features, `U…` UI, `C…` contracts, `A…` adapters, `H…` harness, `M…` migration.
 - Contracts in `contracts/v0_1/` change only with a version bump and a CHANGELOG entry; other people copy them.
 - Every numeric parameter not given by organizers goes to `config/assumptions.json` with `source` and `version`. Never hide an assumption in code.
 - Times are stored in UTC, shown in Europe/Moscow. Intervals are `[start, end)`, 15 min.
@@ -38,8 +40,11 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
   Live progress per tool call in the terminal; raw events in `runs/slice_logs/<ID>.events.jsonl`.
 
 ## Token budget
+- Briefs live in `runs/briefs/<ID>.md` (+ `<ID>.steps.json` for UI); prompts to subagents only point to them.
+- At most 2 screenshots per slice in the main context; `ui-checker` judges the rest and replies ≤10 lines.
 - Code is written by `slice-implementer` (sonnet); `haiku` for docs/fixture-only work. The main session writes briefs and verifies.
 - State lives in files (backlog, decisions, plan, data_notes) — run `/clear` between slices.
 - Never re-parse organizer Excel/images; use `docs/data_notes.md`. Peek at data with a few rows only.
 - Pipe long output through `| tail -n 30`; read files with offset/limit when only a part is needed.
-- Fixes after review go to the same implementer via SendMessage, not a new agent. Subagent reports stay ≤15 lines.
+- Fixes after review go to the same implementer via SendMessage, not a new agent. Subagent reports stay ≤10 lines.
+- Backlog rows tagged `[review]` stop `scripts/slice_loop.sh` after merge + push for the user's review.

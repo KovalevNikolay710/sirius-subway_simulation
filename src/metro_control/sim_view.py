@@ -154,15 +154,6 @@ def sim_payload(
     }
 
 
-PLAYER_HTML = Path(__file__).parent / "assets" / "sim_player.html"
-
-
-def player_html(payload: dict[str, Any]) -> str:
-    """The player page with the payload inlined (`</` escaped so data cannot close the script)."""
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    return PLAYER_HTML.read_text(encoding="utf-8").replace("__PAYLOAD__", data)
-
-
 def load_payload(
     load_pkg: Any, names: dict[str, str], recs: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
@@ -215,9 +206,22 @@ def load_payload(
     }
 
 
-LOAD_HTML = Path(__file__).parent / "assets" / "load_player.html"
+ASSETS = Path(__file__).parent / "assets"
+
+
+def _page(name: str, payload: dict[str, Any]) -> str:
+    """A self-contained player page: shared ui.css / ui.js inlined, payload inlined
+    (`</` escaped so data cannot close the script)."""
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    html = (ASSETS / name).read_text(encoding="utf-8")
+    html = html.replace("/*__UI_CSS__*/", (ASSETS / "ui.css").read_text(encoding="utf-8"))
+    html = html.replace("//__UI_JS__", (ASSETS / "ui.js").read_text(encoding="utf-8"))
+    return html.replace("__PAYLOAD__", data)
+
+
+def player_html(payload: dict[str, Any]) -> str:
+    return _page("sim_player.html", payload)
 
 
 def load_html(payload: dict[str, Any]) -> str:
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    return LOAD_HTML.read_text(encoding="utf-8").replace("__PAYLOAD__", data)
+    return _page("load_player.html", payload)
