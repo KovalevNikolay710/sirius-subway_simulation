@@ -208,7 +208,12 @@ def build_team_bundle(
     recommendation: Path | str | None = None,
     explanation: Path | str | None = None,
     forecast_as_of: datetime | None = None,
+    as_of: datetime | None = None,
+    surge: dict[str, float] | None = None,
 ) -> dict[str, SourceStatus]:
+    """as_of: moment of the mock packages when neither forecast nor recommendation gives one.
+    surge: demo demand factors for the mock load (None = demo default, {} = none)."""
+    as_of_default = as_of
     out = Path(out_dir)
     fc, st_fc = _try("person2", forecast, lambda p: read_forecast(p, as_of=forecast_as_of))
     rec, st_rec = _try("person4", recommendation, read_recommendation)
@@ -226,8 +231,8 @@ def build_team_bundle(
         a = rec.payload.as_of
         as_of = a.replace(minute=a.minute // 15 * 15, second=0, microsecond=0)
     else:
-        as_of = mock.default_as_of(entries)
-    mock.build_mock_bundle(out, entries, as_of)
+        as_of = as_of_default or mock.default_as_of(entries)
+    mock.build_mock_bundle(out, entries, as_of, surge=surge)
     if fc is not None:
         history = entries.filter(pl.col("interval_start") < as_of)
         line = load_line()

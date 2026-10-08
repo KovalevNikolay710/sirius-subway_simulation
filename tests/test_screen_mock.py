@@ -338,3 +338,15 @@ def test_rec_evidence_and_explanation_for(bundle_dir, tmp_path):
     )
     assert explanation_for(tmp_path, p4) == ("Своё объяснение", "person4")
     assert explanation_for(tmp_path, rec)[1] == "reason"
+
+
+def test_bundle_without_surge_and_as_of(entries, as_of, tmp_path):
+    from metro_control.adapters import build_team_bundle
+
+    surged = load_bundle(build_mock_bundle(tmp_path / "a", entries, as_of))["load"].package
+    plain = load_bundle(build_mock_bundle(tmp_path / "b", entries, as_of, surge={}))["load"].package
+    top = lambda p: max(r.r or 0.0 for r in p.payload)  # noqa: E731
+    assert top(plain) < top(surged)
+    build_team_bundle(tmp_path / "c", entries, as_of=as_of, surge={})
+    fc = json.loads((tmp_path / "c" / "forecast.json").read_text(encoding="utf-8"))
+    assert datetime.fromisoformat(fc["payload"]["as_of"].replace("Z", "+00:00")) == as_of

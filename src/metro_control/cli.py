@@ -260,10 +260,14 @@ def _mock_bundle(args: argparse.Namespace) -> int:
         as_of = datetime.fromisoformat(args.as_of) if args.as_of else None
         if as_of is not None and as_of.tzinfo is None:
             raise ValueError("--as-of must include a timezone offset")
-        out = build_mock_bundle(args.out, entries, as_of)
+        out = build_mock_bundle(args.out, entries, as_of, surge={} if args.no_surge else None)
     except ValueError as e:
         print(f"error: {e}".splitlines()[0], file=sys.stderr)
         return 1
+    if entries is not None:  # facts from the organizers' parquet, not synthetic
+        from metro_control.mock import mark_entries_real
+
+        mark_entries_real(out)
     print(f"wrote mock bundle to {out} ({'parquet' if entries is not None else 'synthetic'})")
     return 0
 
@@ -345,6 +349,9 @@ def build_parser() -> argparse.ArgumentParser:
     mb.add_argument("--out", default="runs/demo")
     mb.add_argument("--entries", default=None)
     mb.add_argument("--as-of", default=None, help="ISO datetime with offset")
+    mb.add_argument(
+        "--no-surge", action="store_true", help="no demo demand surge (real day as in the data)"
+    )
     mb.set_defaults(func=_mock_bundle)
     tb = sub.add_parser("team-bundle", help="import person 2 / person 4 files into a run dir")
     tb.add_argument("--out", default="runs/team")

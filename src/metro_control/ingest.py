@@ -105,13 +105,16 @@ def ingest(
     *,
     kinds: dict[str, str] | None = None,
     default_entries: Path | str | None = None,
+    as_of: datetime | None = None,
     now: datetime | None = None,
 ) -> IngestReport:
     """Build `out_root/upload-<ts>` (and `compare-upload-<ts>` for a sim run) from `files`.
 
     `kinds` forces a kind for a file name (per-kind upload boxes); otherwise `classify` decides.
     History for the load model: uploaded entry workbooks, else `default_entries` (parquet),
-    else synthetic mock entries.
+    else synthetic mock entries. `as_of`: moment of the mock forecast when no team forecast is
+    given (e.g. the simulated day, so both tabs show the same day). Real organizer entries get no
+    demo surge, so the forecast shows the day as it was.
     """
     ts = (now or datetime.now(UTC)).strftime("%Y%m%d-%H%M%S")
     root = Path(out_root)
@@ -149,7 +152,7 @@ def ingest(
         or by_kind["explanation"]
         or by_kind["entries"]
     ):
-        _bundle(by_kind, _entries(by_kind["entries"], default_entries, rep), run_dir, rep)
+        _bundle(by_kind, _entries(by_kind["entries"], default_entries, rep), run_dir, rep, as_of)
     else:
         rep.run_dir = None  # only a sim run was uploaded: keep the current packages
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -177,7 +180,9 @@ def _entries(
     return mock.synthetic_entries(datetime(2026, 9, 1).date(), 28)
 
 
-def _bundle(by_kind: dict, entries: pl.DataFrame, run_dir: Path, rep: IngestReport) -> None:
+def _bundle(
+    by_kind: dict, entries: pl.DataFrame, run_dir: Path, rep: IngestReport, as_of: datetime | None
+) -> None:
     fc = by_kind["forecast"][0][1] if by_kind["forecast"] else None
     for n, _ in by_kind["forecast"][1:]:
         rep.add(n, "warning", "лишний прогноз: используется первый файл")
@@ -191,15 +196,16 @@ def _bundle(by_kind: dict, entries: pl.DataFrame, run_dir: Path, rep: IngestRepo
         )
     real_entries = (run_dir / "_in" / "station_entries.parquet").is_file()
     statuses = build_team_bundle(
-        run_dir, entries, forecast=fc, recommendation=first, explanation=exp
+        run_dir,
+        entries,
+        forecast=fc,
+        recommendation=first,
+        explanation=exp,
+        as_of=as_of,
+        surge={} if real_entries else None,
     )
     if real_entries:  # facts came from the organizers' workbooks, not from the mock generator
-        ent = json.loads((run_dir / "entries.json").read_text(encoding="utf-8"))
-        ent["data_mode"] = "real"
-        ent["manifest"]["source"] = "organizers: 15-min entries workbooks"
-        (run_dir / "entries.json").write_text(
-            json.dumps(ent, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
-        )
+        mock.mark_entries_real(run_dir)
     names = {"forecast": "прогноз", "recommendation": "рекомендация", "explanation": "объяснение"}
     for key, st in statuses.items():
         level = {"ok": "ok", "missing": "info", "error": "error"}.get(st.status, "info")

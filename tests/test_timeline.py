@@ -282,10 +282,36 @@ def test_critical_action_rule():
     from metro_control.sim_view import _critical
 
     row = [0.5, 0.6, 0.7, 0.96, 0.8, 0.5, 0.4]
-    data = {"baseline": {"fill": {"north": [row], "south": [[None] * 7]}}}
+    data = {"baseline": {"ratio": {"north": [row], "south": [[None] * 7]}}}
     add = {"action": "add_reserve"}
     assert _critical(add, 0, "north", 1, data)  # full within the next hour
     assert not _critical(add, 0, "north", 5, data)  # peak already passed
     assert not _critical({"action": "remove_train"}, 0, "north", 1, data)
     assert not _critical(add, 0, "south", 1, data)  # no departures
     assert not _critical(add, None, None, 1, data)
+
+
+def test_snapshot_ratio_is_demand_over_capacity(result):
+    for v in ("baseline", "policy"):
+        for fr in result.timeline.frames[v]:
+            for seg in fr["segments"].values():
+                assert seg["ratio"] >= 0
+                if seg["left_behind"] > 0:
+                    assert seg["ratio"] > 0
+
+
+def test_sim_payload_ratio_series(result):
+    from metro_control.line import load_line
+    from metro_control.sim_view import sim_payload
+
+    names = {s.id: s.name_ru for s in load_line().stations}
+    p = sim_payload(result.timeline, names, [], "mock")
+    for v in ("baseline", "policy"):
+        for d in ("north", "south"):
+            rat, fil = p["data"][v]["ratio"][d], p["data"][v]["fill"][d]
+            assert len(rat) == len(fil)
+            assert all(
+                (a is None) == (b is None)
+                for r1, r2 in zip(rat, fil, strict=True)
+                for a, b in zip(r1, r2, strict=True)
+            )

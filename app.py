@@ -75,20 +75,6 @@ ICONS = {
     "error": ":red[:material/error:]",
 }
 
-DATA_TABLE = (
-    (Path(__file__).parent / "src/metro_control/assets/data_guide.md")
-    .read_text(encoding="utf-8")
-    .split("\n", 1)[1]
-)
-
-DATA_NOTES = (
-    "Загрузку перегонов приложение считает само: прогноз входов раскладывается по маршрутам "
-    "из истории и делится на вместимость (поезда в интервале × 1458 мест). Время в файлах — "
-    "UTC с указанием зоны, на экране — МСК; интервалы по 15 минут. Остальные файлы архива "
-    "организаторов (графики, показатели, характеристики составов) приложение не читает: "
-    "нужные из них числа уже внесены в `config/line.json` и `config/assumptions.json`."
-)
-
 UPLOAD_KINDS = {
     "entries": ("Входы по станциям (Excel)", ["xlsx"]),
     "forecast": ("Прогноз (json, csv, parquet)", ["json", "csv", "parquet"]),
@@ -98,15 +84,15 @@ UPLOAD_KINDS = {
 }
 
 
-def data_tab(status_lines: list | None) -> None:
-    st.subheader("Какие данные нужны")
-    st.markdown(DATA_TABLE)
-    st.caption(DATA_NOTES)
+def sim_as_of() -> datetime | None:
+    """17:30 MSK of the simulated day, so the forecast tab shows the same day as the simulator."""
+    tl = load_timeline(sim_dir)[0] if sim_dir is not None else None
+    if tl is None:
+        return None
+    return datetime.fromisoformat(f"{tl.date}T17:30:00+03:00")
 
-    st.subheader("Сейчас на экране")
-    st.markdown(f"Пакеты: `{run_dir}`  \nСимуляция: `{sim_dir if sim_dir else 'нет записи'}`")
-    for line_ in status_lines or []:
-        st.markdown(f"{ICONS.get(line_.level, '')} {line_.text}")
+
+def data_tab() -> None:
     overridden = st.session_state.get("run_dir") or st.session_state.get("sim_dir")
     if overridden and st.button("Вернуться к демо-данным", icon=":material/undo:"):
         st.session_state.pop("run_dir", None)
@@ -114,16 +100,17 @@ def data_tab(status_lines: list | None) -> None:
         st.session_state.pop("ingest_notes", None)
         st.rerun()
 
-    st.subheader("Загрузить")
-    archive = st.file_uploader(
-        "Архив целиком (.zip): архив организаторов, пакет команды или всё вместе",
-        type=["zip"],
-        key="up_zip",
-    )
+    with st.container(border=True):
+        st.subheader("ZIP-архив")
+        archive = st.file_uploader(
+            "Архив", type=["zip"], key="up_zip", label_visibility="collapsed"
+        )
     singles: dict[str, list] = {}
-    with st.expander("Или файлы по отдельности"):
-        for kind, (label, types) in UPLOAD_KINDS.items():
-            singles[kind] = st.file_uploader(
+    with st.container(border=True):
+        st.subheader("Файлы по отдельности")
+        cols = st.columns(2)
+        for n, (kind, (label, types)) in enumerate(UPLOAD_KINDS.items()):
+            singles[kind] = cols[n % 2].file_uploader(
                 label, type=types, accept_multiple_files=True, key=f"up_{kind}"
             )
     if st.button("Загрузить и показать", type="primary", icon=":material/upload:"):
@@ -147,6 +134,7 @@ def data_tab(status_lines: list | None) -> None:
                         Path("runs"),
                         kinds=kinds,
                         default_entries=Path("data/processed/station_entries.parquet"),
+                        as_of=sim_as_of(),
                     )
             except ValueError as e:
                 st.error(str(e))
@@ -159,7 +147,7 @@ def data_tab(status_lines: list | None) -> None:
                 st.rerun()
     notes = st.session_state.get("ingest_notes")
     if notes:
-        st.markdown("**Результат последней загрузки**")
+        st.markdown("**Результат загрузки**")
         for level, file, text in notes:
             where = f"`{file.split('/')[-1]}`: " if file else ""
             st.markdown(f"{ICONS.get(level, '')} {where}{text}")
@@ -171,7 +159,7 @@ if not run_dir.is_dir():
         "Загрузите данные ниже или создайте демо: "
         "`uv run metro-control mock-bundle --out runs/demo`"
     )
-    data_tab(None)
+    data_tab()
     st.stop()
 
 bundle = load_bundle(run_dir)
@@ -444,4 +432,4 @@ with tab_fc:
 with tab_sim:
     sim_tab()
 with tab_data:
-    data_tab(source_statuses(run_dir, bundle))
+    data_tab()
