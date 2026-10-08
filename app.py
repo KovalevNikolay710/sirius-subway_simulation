@@ -4,54 +4,47 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
+import streamlit.components.v1 as components
 
 from metro_control.figures import (
     CALM_HI,
-    DIFF_BANDS,
-    HEAT_BANDS,
     INK,
     LINE1,
     MUTED,
-    heatmap_figure,
     line_strip_figure,
-    waiting_figure,
 )
 from metro_control.line import load_line
 from metro_control.screen import (
     action_card,
-    action_row,
     explanation_text,
-    fmt_int,
     load_bundle,
     segment_view,
     source_statuses,
     station_series,
 )
+from metro_control.sim_view import player_html, sim_payload
 from metro_control.timeline import (
-    Player,
-    actions_until,
-    blend_frames,
     find_sim_dir,
-    frame,
-    heat_grid,
     load_timeline,
-    reset,
-    segment_bands,
-    series,
-    step,
-    toggle,
 )
 from metro_control.timeutil import to_msk
 
 st.set_page_config(page_title="Диспетчер: Линия 1", layout="wide")
+# Less empty space above the title; bordered containers read as dashboard panels.
+st.markdown(
+    """<style>
+[data-testid="stMainBlockContainer"], .block-container { padding-top: 1.2rem; }
+[data-testid="stHeader"] { height: 0; background: transparent; }
+[data-testid="stVerticalBlockBorderWrapper"] { background: #FFFFFF; border-radius: 10px; }
+</style>""",
+    unsafe_allow_html=True,
+)
 st.markdown(
     f"""<div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
 <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;
@@ -110,7 +103,7 @@ def fmt(t) -> str:
 def forecast_tab():
     left, right = st.columns([3, 2])
 
-    with left:
+    with left, st.container(border=True):
         st.subheader("Загрузка перегонов")
         st.caption("Прогнозная загрузка по данным load.json")
         if load_pkg is None:
@@ -125,13 +118,13 @@ def forecast_tab():
             )
             st.plotly_chart(line_strip_figure(view, {}, names), width="stretch")
 
-    with right:
+    with right, st.container(border=True):
         st.subheader("Рекомендация")
         if rec_pkg is None:
             st.info("Нет рекомендации (recommendation.json недоступен).")
         else:
             card = action_card(rec_pkg)
-            with st.container(border=True):
+            with st.container():
                 st.markdown(f"#### {card['title']}")
                 if card["is_mock"]:
                     st.caption(":grey[:material/info:] mock, демо-рекомендация")
@@ -143,6 +136,7 @@ def forecast_tab():
                     "Объяснение: человек 4" if origin == "person4" else "Причина из рекомендации"
                 )
 
+    with right, st.container(border=True):
         st.subheader("Вход на станции")
         sid = st.selectbox(
             "Станция",
@@ -260,196 +254,22 @@ def sim_tab():
         )
     except (OSError, KeyError, ValueError, TypeError):
         policy_label = "mock"
-    first_k = min(
-        (g.ks[0] for g in (heat_grid(tl, "policy", d) for d in ("north", "south")) if g.ks),
-        default=0,
+    st.markdown(
+        f"Политика: **{policy_label}** (демо-политика, не рекомендация ML). "
+        "Воспроизведение записи `compare`: анимация идёт в браузере, данные не пересчитываются."
     )
-    if (
-        "player" not in st.session_state
-        or st.session_state["player"].n_frames != tl.n_frames
-        or st.session_state.get("sim_run_id") != tl.run_id
-    ):
-        st.session_state["player"] = Player(n_frames=tl.n_frames, k=first_k)
-        st.session_state["sim_run_id"] = tl.run_id
-
-    def act(fn):
-        st.session_state["player"] = fn(st.session_state["player"])
-        st.session_state["sim_sub"] = 0
-        st.session_state["last_tick"] = time.monotonic()
-
-    def on_slider():
-        st.session_state["player"] = replace(
-            st.session_state["player"], k=slider_k(st.session_state["sim_k"]), playing=False
-        )
-        st.session_state["sim_sub"] = 0
-
-    t0 = to_msk(_ts(frame(tl, "policy", 0)["t"])).replace(tzinfo=None)
-    step_td = timedelta(minutes=tl.step_min)
-
-    def slider_k(v: datetime) -> int:
-        return max(0, min(round((v - t0) / step_td), tl.n_frames - 1))
-
-    def back(p: Player) -> Player:
-        return replace(p, k=max(first_k, p.k - 1), playing=False)
-
-    def stop(p: Player) -> Player:
-        return replace(reset(p), k=first_k)
-
-    pl_ = st.session_state["player"]
-    st.caption(
-        f"Политика: {policy_label} (демо-политика, не рекомендация ML). "
-        "Воспроизведение записи compare."
-    )
-
-    @st.fragment(run_every=1 / SUBSTEPS if pl_.playing else None)
-    def view():
-        was = st.session_state["player"]
-        sub = st.session_state.get("sim_sub", 0)
-        if was.playing:
-            now_s, last = time.monotonic(), st.session_state.get("last_tick")
-            if last is None or now_s - last >= 0.9 / SUBSTEPS:
-                sub += 1
-                if sub >= SUBSTEPS:
-                    was, sub = step(was), 0
-                st.session_state["player"], st.session_state["last_tick"] = was, now_s
-                st.session_state["sim_sub"] = sub
-        p = st.session_state["player"]
-        if pl_.playing != p.playing:
-            st.rerun()
-        k = p.k
-        frac = sub / SUBSTEPS if p.playing and k < tl.n_frames - 1 else 0.0
-
-        # Player bar: ⏮ ▶/⏸ ■ ⏭ + time slider in one row.
-        bar = st.columns([0.5, 0.5, 0.5, 0.5, 8], gap="small", vertical_alignment="bottom")
-        bar[0].button(BTN_BACK, on_click=act, args=(back,), help="Назад на 15 минут")
-        bar[1].button(
-            BTN_PAUSE if p.playing else BTN_PLAY,
-            on_click=act,
-            args=(toggle,),
-            help="Пауза" if p.playing else "Пуск",
-            type="primary",
-        )
-        bar[2].button(BTN_STOP, on_click=act, args=(stop,), help="Стоп: к началу движения")
-        bar[3].button(BTN_NEXT, on_click=act, args=(step,), help="Вперёд на 15 минут")
-        st.session_state["sim_k"] = t0 + k * step_td
-        bar[4].slider(
-            "Время (МСК)",
-            min_value=t0,
-            max_value=t0 + (tl.n_frames - 1) * step_td,
-            step=step_td,
-            format="HH:mm",
-            key="sim_k",
-            on_change=on_slider,
-        )
-        variant = st.selectbox(
-            "Режим",
-            list(VARIANT_LABELS.values()),
-            index=1,
-            key="sim_variant",
-        )
-        vkey = next(v for v, lbl in VARIANT_LABELS.items() if lbl == variant)
-        fp = frame(tl, "policy", k)
-        t = _ts(fp["t"])
-        now = f"{to_msk(t):%H:%M}"
-
-        grids = {d: heat_grid(tl, vkey, d, names) for d in ("north", "south")}
-        head = grids["north"]
-        ph: str | float = now
-        if head.ks:
-            ph = min(max(k + frac, head.ks[0]), head.ks[-1]) - head.ks[0]
-        bands = DIFF_BANDS if vkey == "diff" else HEAT_BANDS
-        chips = " ".join(
-            f'<span style="display:inline-block;width:14px;height:14px;background:{c};'
-            f'border:1px solid #C9CED6;vertical-align:-2px;margin:0 4px 0 12px"></span>{lbl}'
-            for lbl, c in bands
-        )
-        st.markdown(
-            "<div style='font-size:0.9rem'>Каждая строка — перегон от станции к следующей, "
-            "по горизонтали — время суток, цвет — заполнение поездов. "
-            f"Чёрная линия — текущий момент.<br>{chips}</div>",
-            unsafe_allow_html=True,
-        )
-        st.plotly_chart(
-            heatmap_figure(grids["north"], grids["south"], ph, vkey == "diff"),
-            width="stretch",
-            key="sim_heat",
-        )
-
-        st.subheader(f"Сейчас {now}")
-        shown = "baseline" if vkey == "baseline" else "policy"
-        k1 = min(k + 1, tl.n_frames - 1)
-        fr = blend_frames(frame(tl, shown, k), frame(tl, shown, k1), frac)
-        st.plotly_chart(
-            line_strip_figure(
-                segment_bands(fr, tl.stations),
-                fr["queues"],
-                names,
-            ),
-            width="stretch",
-            key="sim_strip",
-        )
-
-        fb = blend_frames(frame(tl, "baseline", k), frame(tl, "baseline", k1), frac)
-        fpb = blend_frames(fp, frame(tl, "policy", k1), frac)
-        labels = {
-            "waiting": "Ждут на станциях",
-            "denied": "Отказы в посадке",
-            "wait_pax_min": "Ожидание, пасс·мин",
-        }
-        for col, key in zip(st.columns(3), labels, strict=True):
-            delta = fpb[key] - fb[key]
-            col.metric(
-                labels[key],
-                fmt_int(fpb[key]),
-                delta=(
-                    fmt_int(delta, signed=True) + " к режиму без управления"
-                    if round(delta)
-                    else None
-                ),
-                delta_color="inverse",
+    for ac in actions:
+        if ac.get("status") == "source_error":
+            try:
+                when = f"{to_msk(_ts(ac['as_of'])):%H:%M} МСК"
+            except (KeyError, TypeError, ValueError, AttributeError):
+                when = "?"
+            st.warning(
+                f"{when}: ошибка источника ({ac.get('source', '?')}): {ac.get('reason', '')}. "
+                "Шаг политики пропущен, симуляция продолжилась."
             )
-
-        st.plotly_chart(
-            waiting_figure(series(tl, tl.n_frames - 1), k + frac),
-            width="stretch",
-            key="sim_wait",
-        )
-
-        sid = st.selectbox(
-            "Станция",
-            [s.id for s in stations],
-            format_func=lambda i: names[i],
-            key="sim_station",
-        )
-        zero = {"north": 0.0, "south": 0.0}
-        qb = frame(tl, "baseline", k)["queues"].get(sid, zero)
-        qp = fp["queues"].get(sid, zero)
-        for label, d in (("север", "north"), ("юг", "south")):
-            st.write(
-                f"Очередь на {label}: {fmt_int(qb[d])} без управления, {fmt_int(qp[d])} с политикой"
-            )
-
-        st.markdown(f"#### Действия политики ({policy_label})")
-        done = actions_until(actions, t)
-        if not done:
-            st.caption("Пока действий нет.")
-        rows = []
-        for ac in done:
-            at_ = _ts(ac["as_of"])
-            if ac.get("status") == "source_error":
-                st.warning(
-                    f"{to_msk(at_):%H:%M}: ошибка источника ({ac.get('source', '?')}): "
-                    f"{ac.get('reason', '')}"
-                )
-                continue
-            rows.append((f"{to_msk(at_):%H:%M}", *action_row(ac, names)))
-        if rows:
-            st.dataframe(
-                pl.DataFrame(rows, schema=["Время", "Действие", "Цель", "Статус"], orient="row"),
-                hide_index=True,
-            )
-
-    view()
+    payload = sim_payload(tl, names, actions, policy_label)
+    components.html(player_html(payload), height=1680, scrolling=False)
 
 
 tab_fc, tab_sim = st.tabs(["Прогноз и рекомендация", "Симулятор"])
