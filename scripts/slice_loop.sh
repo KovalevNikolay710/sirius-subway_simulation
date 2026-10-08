@@ -13,6 +13,8 @@
 # The loop stops (and notifies) when the gate stays red after SLICE_FIX_TRIES fix rounds,
 # when the session writes a line starting with NEEDS_USER:, or when dev is not clean after merge.
 # A failed push only warns: commits stay on local dev and go out with the next push.
+# Progress: one terminal line per tool call (subagent steps indented); raw events go to
+# runs/slice_logs/<ID>.events.jsonl. A failed Claude session (usage limit, network) stops the loop.
 #
 # Only one loop per repository: a second start (another tmux window, a double click) exits at once
 # (code 3) with the pid of the running one. Reuse in another project: copy this script and the
@@ -84,16 +86,55 @@ next_slice() {
   awk -F'|' '{gsub(/ /, "", $2); print $2}' <<<"$row"
 }
 
-# run_claude LOG [claude args...] -> prints the result, stores session id in $SID, result in $RESULT
+# progress: stream-json events on stdin -> one terminal line per tool call / short note.
+# Subagent steps (parent_tool_use_id set) are indented. Non-JSON lines are skipped, and jq keeps
+# going after a bad event, so the progress view can never break the session it watches.
+progress() {
+  jq -R -r --unbuffered --arg s "$slice" '
+    def short: tostring | gsub("\\s+"; " ") | .[0:110];
+    def ts: now | localtime | strftime("%H:%M:%S");
+    fromjson? // empty
+    | (if .parent_tool_use_id then "    ↳ " else "" end) as $ind
+    | if .type == "assistant" then
+        .message.content[]?
+        | if .type == "tool_use" then
+            "\(ts) [\($s)] \($ind)\(.name): \((.input.description // .input.subagent_type
+              // .input.file_path // .input.pattern // .input.command // .input.prompt // "") | short)"
+          elif .type == "text" and $ind == "" and ((.text // "") | length) > 0 then
+            "\(ts) [\($s)] » \(.text | short)"
+          else empty end
+      elif .type == "result" then
+        "\(ts) [\($s)] session end: \(.subtype // "?"), $\((.total_cost_usd // 0) * 100 | floor / 100)"
+      else empty end'
+}
+
+# run_claude LOG [claude args...] -> live progress on the terminal, final report printed and appended
+# to LOG, raw events appended to LOG's .events.jsonl; sets $SID and $RESULT.
+# Stops the loop if the session fails (non-zero exit, no result event, or an error result),
+# e.g. on a usage limit or a network error.
 run_claude() {
-  local log=$1 out
+  local log=$1 events="${1%.md}.events.jsonl" tmp rc ok
   shift
+  tmp=$(mktemp)
+  set +e
   # 9>&-: children (and e.g. a streamlit they leave running) must not inherit the loop's lock.
-  out=$(claude -p --permission-mode "$MODE" --output-format json "$@" 9>&-)
-  SID=$(jq -r '.session_id' <<<"$out")
-  RESULT=$(jq -r '.result' <<<"$out")
-  tee -a "$log" <<<"$RESULT"
-  echo >>"$log"
+  claude -p --permission-mode "$MODE" --output-format stream-json --verbose "$@" 9>&- |
+    tee "$tmp" | progress
+  rc=${PIPESTATUS[0]}
+  set -e
+  SID=$(jq -R -r -s '[splits("\n") | fromjson? | .session_id // empty] | last // ""' "$tmp")
+  RESULT=$(jq -R -r -s '[splits("\n") | fromjson? | select(.type == "result")] | last | .result // ""' "$tmp")
+  ok=$(jq -R -r -s '[splits("\n") | fromjson? | select(.type == "result")] | last
+    | if . == null then "no result event" elif .is_error then "error result: \(.subtype)" else "ok" end' "$tmp")
+  cat "$tmp" >>"$events"
+  rm -f "$tmp"
+  printf '%s\n' "$RESULT"
+  printf '%s\n\n' "$RESULT" >>"$log"
+  if ((rc != 0)) || [[ "$ok" != "ok" ]]; then
+    notify "metro-control: ${slice:-?} session failed ($ok, exit $rc), loop stopped"
+    echo "Claude session failed: $ok, exit code $rc. Resume by hand: claude -r ${SID:-<unknown>}" >&2
+    exit 1
+  fi
 }
 
 # gate -> 0 if SLICE_GATE_CMD is green on the working tree; last 40 output lines in $GATE_OUT.
