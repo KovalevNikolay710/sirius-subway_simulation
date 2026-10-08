@@ -191,9 +191,9 @@ def test_app_broken_bundle(bundle_dir, tmp_path, monkeypatch):
     (run / "forecast.json").write_text("{not json", encoding="utf-8")
     at = _app(run, monkeypatch).run()
     assert not at.exception
-    warns = " ".join(w.value for w in at.warning)
-    assert "load.json: file not found" in warns
-    assert "forecast.json: invalid JSON" in warns
+    errs = " ".join(w.value for w in at.error)
+    assert "Загрузка перегонов: нет файла load.json" in errs
+    assert "Прогноз: пакет повреждён — forecast.json: invalid JSON" in errs
 
 
 def test_app_missing_dir(tmp_path, monkeypatch):

@@ -32,7 +32,11 @@ def _validate(args: argparse.Namespace) -> int:
     for raw in args.paths:
         p = Path(raw)
         files.extend(
-            sorted(f for f in p.rglob("*.json") if not f.name.endswith(".schema.json"))
+            sorted(
+                f
+                for f in p.rglob("*.json")
+                if not f.name.endswith(".schema.json") and f.name != "sources.json"
+            )
             if p.is_dir()
             else [p]
         )
@@ -252,6 +256,56 @@ def _mock_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _team_bundle(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    import polars as pl
+
+    from metro_control.adapters import build_team_bundle
+    from metro_control.mock import synthetic_entries
+
+    path = (
+        Path(args.entries)
+        if args.entries
+        else PROJECT_ROOT / "data/processed/station_entries.parquet"
+    )
+    try:
+        if args.entries and not path.is_file():
+            raise ValueError(f"entries parquet not found: {path}")
+        if path.is_file():
+            entries = pl.read_parquet(path)
+            need = {"station_id", "interval_start", "day_type", "entries"}
+            if need - set(entries.columns):
+                raise ValueError(f"{path} lacks columns {sorted(need - set(entries.columns))}")
+        else:
+            from datetime import date
+
+            entries = synthetic_entries(date(2026, 9, 1), 28)
+        fa = datetime.fromisoformat(args.forecast_as_of) if args.forecast_as_of else None
+        if fa is not None and fa.tzinfo is None:
+            raise ValueError("--forecast-as-of must include a timezone offset")
+        st = build_team_bundle(
+            args.out,
+            entries,
+            forecast=args.forecast,
+            recommendation=args.recommendation,
+            explanation=args.explanation,
+            forecast_as_of=fa,
+        )
+    except (ValueError, OSError, pl.exceptions.PolarsError) as e:
+        print(f"error: {e}".splitlines()[0], file=sys.stderr)
+        return 1
+    for kind, s in st.items():
+        if s.status == "ok":
+            print(f"{kind}: ok ({s.origin})")
+        elif s.status == "error":
+            print(f"{kind}: error: {s.reason}")
+        else:
+            print(f"{kind}: missing → mock")
+    print(f"wrote {args.out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="metro-control")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -280,6 +334,14 @@ def build_parser() -> argparse.ArgumentParser:
     mb.add_argument("--entries", default=None)
     mb.add_argument("--as-of", default=None, help="ISO datetime with offset")
     mb.set_defaults(func=_mock_bundle)
+    tb = sub.add_parser("team-bundle", help="import person 2 / person 4 files into a run dir")
+    tb.add_argument("--out", default="runs/team")
+    tb.add_argument("--forecast", default=None)
+    tb.add_argument("--recommendation", default=None)
+    tb.add_argument("--explanation", default=None)
+    tb.add_argument("--entries", default=None)
+    tb.add_argument("--forecast-as-of", default=None, help="ISO datetime with offset (tables)")
+    tb.set_defaults(func=_team_bundle)
     cp = sub.add_parser("compare", help="run a scenario day: baseline vs mock policy")
     cp.add_argument(
         "--scenario", required=True, choices=["quiet_weekend", "rail_surge", "snowfall"]
