@@ -253,6 +253,12 @@ def sim_tab():
         st.info(hint)
         return
     actions = read_actions(sim_dir / "actions.jsonl")
+    try:
+        policy_label = str(
+            json.loads((sim_dir / "manifest.json").read_text(encoding="utf-8"))["policy"]
+        )
+    except (OSError, KeyError, ValueError, TypeError):
+        policy_label = "mock"
     if (
         "player" not in st.session_state
         or st.session_state["player"].n_frames != tl.n_frames
@@ -354,12 +360,18 @@ def sim_tab():
             xaxis=dict(title="часов от начала суток", range=[0, tl.n_frames * 15 / 60]),
         )
         st.plotly_chart(fig3, width="stretch")
-        st.markdown("**Действия политики (mock)**")
+        st.markdown(f"**Действия политики ({policy_label})**")
         done = actions_until(actions, t)
         if not done:
             st.caption("Пока действий нет.")
         for ac in done:
             at_ = datetime.fromisoformat(ac["as_of"].replace("Z", "+00:00"))
+            if ac.get("status") == "source_error":
+                st.warning(
+                    f"{to_msk(at_):%H:%M} — ошибка источника ({ac.get('source', '?')}): "
+                    f"{ac.get('reason', '')}"
+                )
+                continue
             st.write(
                 f"{to_msk(at_):%H:%M} — {ac['action']} → {ac['target']} "
                 f"[{ac['status']}] {ac['reason']}"
