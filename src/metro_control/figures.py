@@ -57,6 +57,32 @@ LOAD_SCALE = [
 ]
 DIFF_SCALE = [[0.0, CALM_HI], [0.5, "#FFFFFF"], [1.0, OVER]]
 
+# Heatmap: four flat bands (no gradient) so the day reads at a glance; the app draws the legend.
+QUIET_AT = 0.5
+QUIET = "#D5E0EB"
+HEAT_BANDS = [
+    ("до 50 %", QUIET),
+    ("50–80 %", CALM_HI),
+    ("80–100 %", TIGHT),
+    ("больше 100 %", OVER),
+]
+_Q = QUIET_AT / Z_MAX
+HEAT_SCALE = [
+    [0.0, QUIET],
+    [_Q, QUIET],
+    [_Q, CALM_HI],
+    [_T, CALM_HI],
+    [_T, TIGHT],
+    [_O, TIGHT],
+    [_O, OVER],
+    [1.0, OVER],
+]
+DIFF_BANDS = [
+    ("политика разгрузила", CALM_HI),
+    ("без изменений", "#FFFFFF"),
+    ("добавила нагрузку", OVER),
+]
+
 _LAYOUT: dict[str, Any] = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -80,7 +106,10 @@ def _hover(g: HeatGrid, diff: bool) -> list[list[str]]:
     return out
 
 
-def heatmap_figure(north: HeatGrid, south: HeatGrid, playhead_time: str, diff: bool) -> go.Figure:
+def heatmap_figure(
+    north: HeatGrid, south: HeatGrid, playhead_time: str | float, diff: bool
+) -> go.Figure:
+    """playhead_time: a time label from the grid, or a fractional column index for smooth play."""
     fig = make_subplots(
         rows=1,
         cols=2,
@@ -102,24 +131,10 @@ def heatmap_figure(north: HeatGrid, south: HeatGrid, playhead_time: str, diff: b
             ),
         )
     else:
-        kw = dict(
-            colorscale=LOAD_SCALE,
-            zmin=0,
-            zmax=Z_MAX,
-            colorbar=dict(
-                title="заполнение",
-                tickvals=[0, 0.8, 1.0, 1.3],
-                ticktext=["0 %", "80 %", "100 %", "130 %"],
-                thickness=10,
-                len=0.9,
-            ),
-        )
+        kw = dict(colorscale=HEAT_SCALE, zmin=0, zmax=Z_MAX)
     for col, g in ((1, north), (2, south)):
         k = dict(kw)
-        if col == 1:
-            k["showscale"] = True
-        else:
-            k["showscale"] = False
+        k["showscale"] = False
         fig.add_trace(
             go.Heatmap(
                 z=g.z,
@@ -134,7 +149,7 @@ def heatmap_figure(north: HeatGrid, south: HeatGrid, playhead_time: str, diff: b
             row=1,
             col=col,
         )
-        fig.add_vline(x=playhead_time, line=dict(color=INK, width=2), row=1, col=col)
+        fig.add_vline(x=playhead_time, line=dict(color=INK, width=3), row=1, col=col)
     for col, g in ((1, north), (2, south)):
         ticks = [t for t in g.times if t.endswith(":00") and int(t[:2]) % 4 == 2]
         fig.update_xaxes(
@@ -273,7 +288,8 @@ def _clock(k: int) -> str:
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
-def waiting_figure(series_df: pl.DataFrame, k_time: str) -> go.Figure:
+def waiting_figure(series_df: pl.DataFrame, k_time: str | float) -> go.Figure:
+    """k_time: a clock label, or a fractional frame index for smooth play."""
     fig = go.Figure()
     for v, nm, color, dash in (
         ("baseline", "без управления", MUTED, "dash"),

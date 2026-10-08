@@ -156,14 +156,14 @@ def test_app_sim_tab(result, tmp_path, monkeypatch):
     first = _kpis(at)
     k0 = timeline.heat_grid(result.timeline, "policy", "north").ks[0]
     assert k0 > 0 and at.session_state["player"].k == k0
-    _btn(at, "Шаг +15 мин").click().run()
-    _btn(at, "Шаг +15 мин").click().run()
+    _btn(at, ":material/skip_next:").click().run()
+    _btn(at, ":material/skip_next:").click().run()
     assert at.session_state["player"].k == k0 + 2
     at.selectbox(key="sim_station").select("ploshchad_lenina").run()
     assert at.session_state["player"].k == k0 + 2
     at.selectbox(key="s4_station").select_index(1).run()
     assert at.session_state["player"].k == k0 + 2
-    _btn(at, "Сброс").click().run()
+    _btn(at, ":material/stop:").click().run()
     assert at.session_state["player"].k == k0
     assert not at.exception
     assert _kpis(at) == first
@@ -181,7 +181,7 @@ def test_app_slider_and_variant(result, tmp_path, monkeypatch):
     p = at.session_state["player"]
     assert p.k == 40 and not p.playing
     for v in ("Без управления", "Разница", "С политикой (mock)"):
-        at.radio(key="sim_variant").set_value(v).run()
+        at.selectbox(key="sim_variant").set_value(v).run()
         assert not at.exception
         assert at.session_state["player"].k == 40
     assert len(at.metric) == 3

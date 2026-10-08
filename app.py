@@ -15,6 +15,8 @@ import streamlit as st
 
 from metro_control.figures import (
     CALM_HI,
+    DIFF_BANDS,
+    HEAT_BANDS,
     INK,
     LINE1,
     MUTED,
@@ -36,7 +38,7 @@ from metro_control.screen import (
 from metro_control.timeline import (
     Player,
     actions_until,
-    compare_frame,
+    blend_frames,
     find_sim_dir,
     frame,
     heat_grid,
@@ -45,7 +47,6 @@ from metro_control.timeline import (
     segment_bands,
     series,
     step,
-    tick,
     toggle,
 )
 from metro_control.timeutil import to_msk
@@ -225,6 +226,15 @@ def read_actions(path: Path) -> list[dict]:
     return out
 
 
+SUBSTEPS = 4  # display sub-steps per 15-min frame while playing (smooth motion)
+BTN_BACK, BTN_PLAY, BTN_PAUSE, BTN_STOP, BTN_NEXT = (
+    ":material/skip_previous:",
+    ":material/play_arrow:",
+    ":material/pause:",
+    ":material/stop:",
+    ":material/skip_next:",
+)
+
 VARIANT_LABELS = {
     "baseline": "Без управления",
     "policy": "С политикой (mock)",
@@ -264,12 +274,14 @@ def sim_tab():
 
     def act(fn):
         st.session_state["player"] = fn(st.session_state["player"])
+        st.session_state["sim_sub"] = 0
         st.session_state["last_tick"] = time.monotonic()
 
     def on_slider():
         st.session_state["player"] = replace(
             st.session_state["player"], k=slider_k(st.session_state["sim_k"]), playing=False
         )
+        st.session_state["sim_sub"] = 0
 
     t0 = to_msk(_ts(frame(tl, "policy", 0)["t"])).replace(tzinfo=None)
     step_td = timedelta(minutes=tl.step_min)
@@ -277,29 +289,50 @@ def sim_tab():
     def slider_k(v: datetime) -> int:
         return max(0, min(round((v - t0) / step_td), tl.n_frames - 1))
 
+    def back(p: Player) -> Player:
+        return replace(p, k=max(first_k, p.k - 1), playing=False)
+
+    def stop(p: Player) -> Player:
+        return replace(reset(p), k=first_k)
+
     pl_ = st.session_state["player"]
-    c1, c2, c3, _ = st.columns([1.6, 1, 1, 6], gap="small")
-    c1.button("Шаг +15 мин", on_click=act, args=(step,))
-    c2.button("Пауза" if pl_.playing else "Пуск", on_click=act, args=(toggle,))
-    c3.button("Сброс", on_click=act, args=(lambda p: replace(reset(p), k=first_k),))
     st.caption(
         f"Политика: {policy_label} (демо-политика, не рекомендация ML). "
         "Воспроизведение записи compare."
     )
 
-    @st.fragment(run_every=1 if pl_.playing else None)
+    @st.fragment(run_every=1 / SUBSTEPS if pl_.playing else None)
     def view():
         was = st.session_state["player"]
+        sub = st.session_state.get("sim_sub", 0)
         if was.playing:
-            st.session_state["player"], st.session_state["last_tick"] = tick(
-                was, time.monotonic(), st.session_state.get("last_tick")
-            )
+            now_s, last = time.monotonic(), st.session_state.get("last_tick")
+            if last is None or now_s - last >= 0.9 / SUBSTEPS:
+                sub += 1
+                if sub >= SUBSTEPS:
+                    was, sub = step(was), 0
+                st.session_state["player"], st.session_state["last_tick"] = was, now_s
+                st.session_state["sim_sub"] = sub
         p = st.session_state["player"]
         if pl_.playing != p.playing:
             st.rerun()
         k = p.k
+        frac = sub / SUBSTEPS if p.playing and k < tl.n_frames - 1 else 0.0
+
+        # Player bar: ⏮ ▶/⏸ ■ ⏭ + time slider in one row.
+        bar = st.columns([0.5, 0.5, 0.5, 0.5, 8], gap="small", vertical_alignment="bottom")
+        bar[0].button(BTN_BACK, on_click=act, args=(back,), help="Назад на 15 минут")
+        bar[1].button(
+            BTN_PAUSE if p.playing else BTN_PLAY,
+            on_click=act,
+            args=(toggle,),
+            help="Пауза" if p.playing else "Пуск",
+            type="primary",
+        )
+        bar[2].button(BTN_STOP, on_click=act, args=(stop,), help="Стоп: к началу движения")
+        bar[3].button(BTN_NEXT, on_click=act, args=(step,), help="Вперёд на 15 минут")
         st.session_state["sim_k"] = t0 + k * step_td
-        st.slider(
+        bar[4].slider(
             "Время (МСК)",
             min_value=t0,
             max_value=t0 + (tl.n_frames - 1) * step_td,
@@ -308,13 +341,11 @@ def sim_tab():
             key="sim_k",
             on_change=on_slider,
         )
-        variant = st.radio(
+        variant = st.selectbox(
             "Режим",
             list(VARIANT_LABELS.values()),
             index=1,
-            horizontal=True,
             key="sim_variant",
-            label_visibility="collapsed",
         )
         vkey = next(v for v, lbl in VARIANT_LABELS.items() if lbl == variant)
         fp = frame(tl, "policy", k)
@@ -323,17 +354,31 @@ def sim_tab():
 
         grids = {d: heat_grid(tl, vkey, d, names) for d in ("north", "south")}
         head = grids["north"]
-        ph = now
-        if head.times:
-            ph = head.times[min(max(k, head.ks[0]), head.ks[-1]) - head.ks[0]]
+        ph: str | float = now
+        if head.ks:
+            ph = min(max(k + frac, head.ks[0]), head.ks[-1]) - head.ks[0]
+        bands = DIFF_BANDS if vkey == "diff" else HEAT_BANDS
+        chips = " ".join(
+            f'<span style="display:inline-block;width:14px;height:14px;background:{c};'
+            f'border:1px solid #C9CED6;vertical-align:-2px;margin:0 4px 0 12px"></span>{lbl}'
+            for lbl, c in bands
+        )
+        st.markdown(
+            "<div style='font-size:0.9rem'>Каждая строка — перегон от станции к следующей, "
+            "по горизонтали — время суток, цвет — заполнение поездов. "
+            f"Чёрная линия — текущий момент.<br>{chips}</div>",
+            unsafe_allow_html=True,
+        )
         st.plotly_chart(
             heatmap_figure(grids["north"], grids["south"], ph, vkey == "diff"),
             width="stretch",
+            key="sim_heat",
         )
 
         st.subheader(f"Сейчас {now}")
         shown = "baseline" if vkey == "baseline" else "policy"
-        fr = frame(tl, shown, k)
+        k1 = min(k + 1, tl.n_frames - 1)
+        fr = blend_frames(frame(tl, shown, k), frame(tl, shown, k1), frac)
         st.plotly_chart(
             line_strip_figure(
                 segment_bands(fr, tl.stations),
@@ -341,27 +386,34 @@ def sim_tab():
                 names,
             ),
             width="stretch",
+            key="sim_strip",
         )
 
-        cf = compare_frame(tl, k)
+        fb = blend_frames(frame(tl, "baseline", k), frame(tl, "baseline", k1), frac)
+        fpb = blend_frames(fp, frame(tl, "policy", k1), frac)
         labels = {
             "waiting": "Ждут на станциях",
             "denied": "Отказы в посадке",
             "wait_pax_min": "Ожидание, пасс·мин",
         }
         for col, key in zip(st.columns(3), labels, strict=True):
+            delta = fpb[key] - fb[key]
             col.metric(
                 labels[key],
-                fmt_int(cf["policy"][key]),
+                fmt_int(fpb[key]),
                 delta=(
-                    fmt_int(cf["delta"][key], signed=True) + " к режиму без управления"
-                    if round(cf["delta"][key])
+                    fmt_int(delta, signed=True) + " к режиму без управления"
+                    if round(delta)
                     else None
                 ),
                 delta_color="inverse",
             )
 
-        st.plotly_chart(waiting_figure(series(tl, tl.n_frames - 1), now), width="stretch")
+        st.plotly_chart(
+            waiting_figure(series(tl, tl.n_frames - 1), k + frac),
+            width="stretch",
+            key="sim_wait",
+        )
 
         sid = st.selectbox(
             "Станция",

@@ -225,6 +225,40 @@ def reset(p: Player) -> Player:
     return replace(p, k=0, playing=False)
 
 
+def _lerp(a: float | None, b: float | None, f: float) -> float | None:
+    if a is None or b is None:
+        return a if f < 0.5 else b
+    return a + (b - a) * f
+
+
+def blend_frames(a: dict[str, Any], b: dict[str, Any], f: float) -> dict[str, Any]:
+    """Frame between a and b at fraction f in [0, 1) for smooth playback (display only)."""
+    if f <= 0:
+        return a
+    out = {x: _lerp(a.get(x), b.get(x), f) for x in (*KPI_KEYS, "entered", "onboard")}
+    out["t"] = a["t"]
+    zero = {"north": 0.0, "south": 0.0}
+    out["queues"] = {
+        s: {d: _lerp(a["queues"].get(s, zero)[d], b["queues"].get(s, zero)[d], f) for d in zero}
+        for s in set(a["queues"]) | set(b["queues"])
+    }
+    none = {"fill": None, "left_behind": 0.0}
+    out["segments"] = {
+        s: {
+            "fill": _lerp(
+                a["segments"].get(s, none)["fill"], b["segments"].get(s, none)["fill"], f
+            ),
+            "left_behind": _lerp(
+                a["segments"].get(s, none)["left_behind"],
+                b["segments"].get(s, none)["left_behind"],
+                f,
+            ),
+        }
+        for s in set(a["segments"]) | set(b["segments"])
+    }
+    return out
+
+
 def tick(
     p: Player, now: float, last: float | None, period: float = 1.0
 ) -> tuple[Player, float | None]:
