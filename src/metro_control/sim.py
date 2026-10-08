@@ -249,3 +249,70 @@ def pending_wait_pax_min(state: SimState) -> float:
     return sum(
         sum(c.by_dest.values()) * (state.t - c.t_arrive) for q in state.queues.values() for c in q
     )
+
+
+def _origin_idx(params: SimParams, direction: str) -> int:
+    if direction not in (NORTH, SOUTH):
+        raise ValueError("direction: must be north or south")
+    return 0 if direction == NORTH else len(params.stations) - 1
+
+
+def _copy_state(state: SimState) -> SimState:
+    log = list(state.log)
+    shallow = copy.copy(state)
+    shallow.log = []
+    st = copy.deepcopy(shallow)
+    st.log = log
+    return st
+
+
+def add_trip(
+    state: SimState, params: SimParams, train_id: str, direction: str, t_depart: float
+) -> SimState:
+    """Return a new state with one more one-way trip leaving its origin terminal at t_depart."""
+    idx = _origin_idx(params, direction)
+    if t_depart < state.t:
+        raise ValueError("t_depart: before state.t")
+    if train_id in state.trains:
+        raise ValueError(f"train_id: duplicate {train_id}")
+    st = _copy_state(state)
+    st.trains[train_id] = Train(train_id, idx, direction, one_way=True)
+    heapq.heappush(st.events, (t_depart, st.seq, train_id, idx, direction))
+    st.seq += 1
+    return st
+
+
+def cancel_trip(state: SimState, train_id: str) -> SimState:
+    """Cancel a one-way trip that has not left its origin terminal yet."""
+    tr = state.trains.get(train_id)
+    if tr is None or not tr.one_way or not tr.in_service:
+        raise ValueError(f"train_id: {train_id} is not a pending trip")
+    evs = [e for e in state.events if e[2] == train_id]
+    if len(evs) != 1 or any(sl.train_id == train_id for sl in state.log):
+        raise ValueError(f"train_id: {train_id} already left its origin terminal")
+    st = _copy_state(state)
+    st.events = [e for e in st.events if e[2] != train_id]
+    heapq.heapify(st.events)
+    st.trains[train_id].in_service = False
+    return st
+
+
+def departure_list(state: SimState, params: SimParams, direction: str) -> list[tuple[float, str]]:
+    """(time, train_id) of one-way trips at the origin terminal (past stops + pending)."""
+    idx = _origin_idx(params, direction)
+    station = params.stations[idx]
+    out = [
+        (sl.t, sl.train_id)
+        for sl in state.log
+        if sl.station == station and sl.direction == direction and state.trains[sl.train_id].one_way
+    ]
+    out += [
+        (e[0], e[2])
+        for e in state.events
+        if e[3] == idx and e[4] == direction and state.trains[e[2]].one_way
+    ]
+    return sorted(out)
+
+
+def terminal_departures(state: SimState, params: SimParams, direction: str) -> list[float]:
+    return [t for t, _ in departure_list(state, params, direction)]

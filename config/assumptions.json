@@ -113,6 +113,26 @@
    "value": 1.0,
    "unit": "min",
    "source": "assumption: slot demand spread evenly over 1-min arrival steps"
+  },
+  "policy_reserve_delay_min": {
+   "value": 20,
+   "unit": "min",
+   "source": "assumption: organizers give 15-20 min to enter the line; upper bound taken"
+  },
+  "policy_action_window_min": {
+   "value": 60,
+   "unit": "min",
+   "source": "assumption: validity window of a mock policy recommendation"
+  },
+  "policy_headway_window_min": {
+   "value": 30,
+   "unit": "min",
+   "source": "assumption: half-width of the window in which departures are counted against the min-headway rate"
+  },
+  "policy_shift_lookahead_min": {
+   "value": 60,
+   "unit": "min",
+   "source": "assumption: shift_peak pulls a trip from this far after the window end"
   }
  }
 }
