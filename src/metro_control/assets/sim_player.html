@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Golos Text"; src: url("/app/static/GolosText.ttf") format("truetype"); font-weight: 400 800; }
+:root {
+  --paper: #F4F5F7; --card: #FFFFFF; --rule: #E3E6EA; --ink: #1B2430; --muted: #6B7685;
+  --calm: #0078C9; --quiet: #CFE3F3; --tight: #EA7125; --over: #D6083B; --line1: #D6083B; --good: #009A49; --step: #702785;
+  --console: #0E2A47; --console-2: #1C3D60; --console-rule: #2B4D72;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Golos Text", system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+.wrap { display: grid; gap: 14px; padding: 2px 2px 8px; }
+
+/* Console: the dispatcher's player */
+.console { background: var(--console); color: #fff; border-radius: 12px; padding: 16px 18px 12px; }
+.row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.row > .btn, .row > .clock { align-self: center; }
+.btn { width: 40px; height: 40px; border-radius: 10px; border: 0; cursor: pointer; display: grid; place-items: center;
+  background: var(--console-2); color: #fff; }
+.btn:hover { filter: brightness(1.25); }
+.btn:focus-visible, .seg button:focus-visible, select:focus-visible, .scrub:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.btn.play { width: 52px; height: 52px; border-radius: 50%; background: var(--calm); }
+.btn.play.on { background: var(--tight); color: var(--ink); }
+.btn.stop { background: var(--over); }
+.btn.stepb { background: var(--step); }
+.btn svg { width: 20px; height: 20px; fill: currentColor; }
+.btn.play svg { width: 24px; height: 24px; }
+.clock { margin-left: 8px; min-width: 190px; }
+.clock b { font-size: 34px; font-weight: 600; letter-spacing: .5px; line-height: 1; }
+.clock span { display: block; color: #AEB7C4; font-size: 12.5px; margin-top: 4px; }
+.spacer { flex: 1; }
+.ctl { display: grid; gap: 4px; color: #AEB7C4; font-size: 12px; }
+.seg { display: flex; background: var(--console-2); border-radius: 8px; padding: 3px; }
+.seg button { border: 0; background: transparent; color: #DDE3EA; padding: 6px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+.seg button.on { background: #fff; color: var(--ink); font-weight: 600; }
+select { font: inherit; color: #fff; background: var(--console-2); border: 1px solid var(--console-rule);
+  border-radius: 8px; padding: 7px 30px 7px 10px; appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, #AEB7C4 50%), linear-gradient(135deg, #AEB7C4 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
+
+/* Scrubber: day overview you can drag */
+.scrub { position: relative; margin-top: 28px; height: 74px; cursor: pointer; touch-action: none; user-select: none; }
+.scrub canvas { position: absolute; inset: 0 0 18px 0; width: 100%; height: 56px; }
+.scrub .hours { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; color: #8994A3; font-size: 11px; }
+.scrub .hours i { position: absolute; transform: translateX(-50%); font-style: normal; }
+.thumb { position: absolute; top: -6px; width: 2px; height: 62px; background: #fff; pointer-events: none; }
+.thumb::after { content: attr(data-t); position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+  background: #fff; color: var(--ink); font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+.scrub-legend { color: #8994A3; font-size: 11.5px; margin-top: 2px; }
+
+/* Panels */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
+.panel h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.panel .sub { color: var(--muted); font-size: 12.5px; margin: 3px 0 10px; }
+.kpi .lab { color: var(--muted); font-size: 12.5px; }
+.kpi .val { font-size: 30px; font-weight: 600; margin: 6px 0 6px; }
+.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #EEF1F4; color: var(--muted); }
+.chip.good { background: #E0F3E8; color: var(--good); }
+.chip.bad { background: #FBE3E9; color: var(--over); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink); font-size: 12.5px; margin-bottom: 8px; }
+.legend i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid #C9CED6; }
+.heat { position: relative; }
+.heat canvas { width: 100%; display: block; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 12px; padding: 6px 8px;
+  border-radius: 6px; white-space: nowrap; display: none; z-index: 2; }
+.two { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; }
+.acts { max-height: 238px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.acts li { display: grid; grid-template-columns: 48px 1fr; gap: 8px; padding: 7px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.acts li:first-child { border-top: 0; }
+.acts li b { font-weight: 600; }
+.acts li .st { color: var(--muted); font-size: 12px; }
+.acts li.err b { color: var(--over); }
+.empty { color: var(--muted); font-size: 13px; }
+svg text { font-family: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="console" aria-label="Проигрыватель симуляции">
+    <div class="row">
+      <button class="btn stepb" id="back" title="Назад на 15 минут" aria-label="Назад на 15 минут"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="btn play" id="play" title="Пуск" aria-label="Пуск"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
+      <button class="btn stop" id="stop" title="Стоп: к началу движения" aria-label="Стоп"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+      <button class="btn stepb" id="next" title="Вперёд на 15 минут" aria-label="Вперёд на 15 минут"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+      <div class="clock"><b id="clock">05:15</b><span id="meta"></span></div>
+      <div class="spacer"></div>
+      <label class="ctl">Скорость
+        <div class="seg" id="speed"><button data-s="1" class="on">×1</button><button data-s="2">×2</button><button data-s="4">×4</button></div>
+      </label>
+      <label class="ctl">Режим
+        <select id="mode">
+          <option value="baseline">Без управления</option>
+          <option value="policy" selected>С политикой</option>
+          <option value="diff">Разница</option>
+        </select>
+      </label>
+    </div>
+    <div class="scrub" id="scrub" tabindex="0" role="slider" aria-label="Время симуляции" aria-valuemin="0">
+      <canvas id="overview"></canvas>
+      <div class="thumb" id="thumb" data-t="05:15"></div>
+      <div class="hours" id="hours"></div>
+    </div>
+    <div class="scrub-legend">Полоса — самая загруженная точка линии в каждый момент, кривая — сколько людей ждут на станциях. Перетащите, чтобы перейти к нужному времени.</div>
+  </section>
+
+  <section class="kpis">
+    <div class="panel kpi"><div class="lab">Ждут на станциях сейчас</div><div class="val" id="k_wait">0</div><span class="chip" id="d_wait"></span></div>
+    <div class="panel kpi"><div class="lab">Перегонов с полными поездами сейчас</div><div class="val" id="k_over">0</div><span class="chip" id="d_over"></span></div>
+    <div class="panel kpi"><div class="lab">Отказы в посадке с начала дня</div><div class="val" id="k_denied">0</div><span class="chip" id="d_denied"></span></div>
+    <div class="panel kpi"><div class="lab">Ожидание с начала дня, пасс·мин</div><div class="val" id="k_wpm">0</div><span class="chip" id="d_wpm"></span></div>
+  </section>
+
+  <section class="panel">
+    <h3>Загрузка линии за день</h3>
+    <div class="sub">Строка — перегон от станции к следующей, по горизонтали — время суток, цвет — насколько заполнены поезда. Вертикальная линия — момент, который сейчас проигрывается; то, что ещё впереди, приглушено.</div>
+    <div class="legend" id="legend"></div>
+    <div class="heat"><canvas id="heat"></canvas><div class="tip" id="tip"></div></div>
+  </section>
+
+  <section class="panel">
+    <h3 id="nowTitle">Линия сейчас</h3>
+    <div class="sub">Над линией — поезда на север, под линией — на юг. Кружки на станциях — люди в очереди на платформе.</div>
+    <svg id="strip" width="100%" height="270"></svg>
+  </section>
+
+  <section class="two">
+    <div class="panel">
+      <h3>Ждут на станциях за день</h3>
+      <div class="sub" id="waitSub"></div>
+      <svg id="wait" width="100%" height="230"></svg>
+    </div>
+    <div class="panel">
+      <h3>Действия политики</h3>
+      <div class="sub" id="actSub"></div>
+      <ul class="acts" id="acts"></ul>
+    </div>
+  </section>
+</div>
+
+<script>
+const P = __PAYLOAD__;
+const C = { paper: "#F4F5F7", ink: "#1B2430", muted: "#6B7685", rule: "#E3E6EA", quiet: "#CFE3F3", calm: "#0078C9",
+  tight: "#EA7125", over: "#D6083B", line1: "#D6083B", good: "#009A49", none: "#E9ECEF" };
+const N = P.times.length, S = P.segs.length, ST = P.stations.length;
+const state = { pos: P.first, playing: false, speed: 1, mode: "policy" };
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+const fmt = (x) => Math.round(x).toLocaleString("ru-RU").replace(/ /g, " ");
+const sfmt = (x) => (x > 0 ? "+" : x < 0 ? "−" : "") + fmt(Math.abs(x));
+const lerp = (a, b, f) => (a == null || b == null) ? (f < 0.5 ? a : b) : a + (b - a) * f;
+function at(arr, pos) { const k = Math.floor(pos), f = pos - k; return lerp(arr[k], arr[Math.min(k + 1, N - 1)], f); }
+function hex(c) { return [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)); }
+function mix(a, b, f) { const x = hex(a), y = hex(b); return "rgb(" + x.map((v, i) => Math.round(v + (y[i] - v) * f)).join(",") + ")"; }
+// Capacity is a hard limit in the simulator: a full train (≥99.5 %) means people stay behind = overload.
+const FULL = 0.995;
+function band(f) { if (f == null) return null; if (f < 0.5) return C.quiet; if (f <= 0.8) return C.calm; if (f < FULL) return C.tight; return C.over; }
+function smooth(f) { // continuous version for animated elements (no jumps between frames)
+  if (f == null) return C.none;
+  const stops = [[0, "#E1EEF8"], [0.5, "#7DB7E3"], [0.8, C.calm], [0.86, C.tight], [0.97, C.tight], [FULL, C.over]];
+  if (f >= FULL) return C.over;
+  for (let i = 1; i < stops.length; i++) if (f <= stops[i][0]) {
+    const [a, ca] = stops[i - 1], [b, cb] = stops[i]; return mix(ca, cb, (f - a) / (b - a)); }
+  return C.over;
+}
+function diffBand(d) { if (d == null) return null; if (d < -0.05) return C.good; if (d > 0.05) return C.over; return "#EEF1F4"; }
+const variantOf = () => state.mode === "baseline" ? "baseline" : "policy";
+const span = () => Math.max(1, P.last - P.first);
+
+// ---------- scrubber (day overview) ----------
+function peakSeries(v) {
+  const out = [];
+  for (let k = 0; k < N; k++) { let m = null;
+    for (const d of ["north", "south"]) for (const row of P.data[v].fill[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]);
+    out.push(m); }
+  return out;
+}
+const peaks = { baseline: peakSeries("baseline"), policy: peakSeries("policy") };
+function drawOverview() {
+  const cv = $("overview"), w = cv.clientWidth, h = 56, dpr = devicePixelRatio || 1;
+  cv.width = w * dpr; cv.height = h * dpr; const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const v = variantOf(), wq = P.data[v].kpi.waiting, x0 = P.first, x1 = P.last, n = x1 - x0 + 1, cw = w / n;
+  const maxW = Math.max(1, ...P.data.baseline.kpi.waiting, ...P.data.policy.kpi.waiting);
+  g.fillStyle = "#143657"; g.fillRect(0, 0, w, h);
+  g.beginPath(); g.moveTo(0, 40);
+  for (let k = x0; k <= x1; k++) g.lineTo((k - x0 + 0.5) * cw, 40 - 34 * wq[k] / maxW);
+  g.lineTo(w, 40); g.closePath(); g.fillStyle = "rgba(125,183,227,.35)"; g.fill();
+  g.beginPath(); for (let k = x0; k <= x1; k++) { const x = (k - x0 + 0.5) * cw, y = 40 - 34 * wq[k] / maxW; k === x0 ? g.moveTo(x, y) : g.lineTo(x, y); }
+  g.strokeStyle = "#7DB7E3"; g.lineWidth = 1.5; g.stroke();
+  for (let k = x0; k <= x1; k++) { g.fillStyle = band(peaks[v][k]) || "#1C3D60"; g.fillRect((k - x0) * cw, 44, Math.ceil(cw), 12); }
+  const hrs = $("hours"); hrs.innerHTML = "";
+  for (let k = x0; k <= x1; k++) if (P.times[k].endsWith(":00") && +P.times[k].slice(0, 2) % 2 === 0) {
+    const i = document.createElement("i"); i.style.left = ((k - x0 + 0.5) * cw) + "px"; i.textContent = P.times[k]; hrs.appendChild(i); }
+}
+function seekFromX(clientX) {
+  const r = $("scrub").getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  state.pos = P.first + f * span(); render();
+}
+let dragging = false;
+$("scrub").addEventListener("pointerdown", (e) => { dragging = true; setPlaying(false); $("scrub").setPointerCapture(e.pointerId); seekFromX(e.clientX); });
+$("scrub").addEventListener("pointermove", (e) => { if (dragging) seekFromX(e.clientX); });
+$("scrub").addEventListener("pointerup", () => { dragging = false; state.pos = Math.round(state.pos); render(); });
+$("scrub").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === " ") { setPlaying(!state.playing); e.preventDefault(); }
+});
+
+// ---------- heatmap ----------
+let HL = 170; const HT = 26, HB = 46, GAP = 16; // label column, top titles, bottom ticks, gap between directions
+let heatCache = null, heatGeom = null;
+function buildHeat() {
+  const cv = $("heat"), w = cv.clientWidth, rowH = 22, h = HT + S * rowH + HB, dpr = devicePixelRatio || 1;
+  cv.style.height = h + "px"; cv.width = w * dpr; cv.height = h * dpr;
+  const off = document.createElement("canvas"); off.width = w * dpr; off.height = h * dpr;
+  const g = off.getContext("2d"); g.scale(dpr, dpr);
+  g.font = "12px 'Golos Text', system-ui";
+  HL = 16 + Math.max(...P.segs.map(s => g.measureText(s.label).width));
+  const x0 = P.first, n = P.last - P.first + 1, pw = (w - HL - GAP) / 2, cw = pw / n;
+  g.font = "12px 'Golos Text', system-ui"; g.textBaseline = "middle";
+  P.segs.forEach((s, i) => { g.fillStyle = C.ink; g.textAlign = "right"; g.fillText(s.label, HL - 10, HT + i * rowH + rowH / 2); });
+  ["north", "south"].forEach((d, j) => {
+    const left = HL + j * (pw + GAP);
+    g.fillStyle = C.ink; g.textAlign = "left"; g.font = "600 13px 'Golos Text', system-ui";
+    g.fillText(j === 0 ? "На север, к Девяткину" : "На юг, к Проспекту Ветеранов", left, 11);
+    g.font = "12px 'Golos Text', system-ui";
+    for (let i = 0; i < S; i++) for (let k = x0; k <= P.last; k++) {
+      let c;
+      if (state.mode === "diff") { const a = P.data.policy.fill[d][i][k], b = P.data.baseline.fill[d][i][k];
+        c = diffBand(a == null || b == null ? null : a - b); }
+      else c = band(P.data[variantOf()].fill[d][i][k]);
+      g.fillStyle = c || "#F7F8F9"; g.fillRect(left + (k - x0) * cw, HT + i * rowH, Math.ceil(cw), rowH - 2);
+    }
+    g.fillStyle = C.muted; g.textAlign = "center";
+    for (let k = x0; k <= P.last; k++) if (P.times[k].endsWith(":00") && +P.times[k].slice(0, 2) % 4 === 2)
+      g.fillText(P.times[k], left + (k - x0 + 0.5) * cw, HT + S * rowH + 13);
+  });
+  heatCache = off; heatGeom = { w, h, rowH, pw, cw, x0 };
+}
+function drawHeat() {
+  if (!$("heat").clientWidth) return;
+  if (!heatCache) buildHeat();
+  const cv = $("heat"), dpr = devicePixelRatio || 1, g = cv.getContext("2d"), { w, h, rowH, pw, cw, x0 } = heatGeom;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(heatCache, 0, 0); g.scale(dpr, dpr);
+  const t = $("clock").textContent;
+  ["north", "south"].forEach((d, j) => {
+    const left = HL + j * (pw + GAP), x = left + (state.pos - x0 + 0.5) * cw, top = HT, bot = HT + S * rowH - 2;
+    g.fillStyle = "rgba(255,255,255,.45)"; g.fillRect(x, top, left + pw - x, bot - top); // future dimmed
+    g.fillStyle = C.ink; g.fillRect(x - 1, top - 4, 2, bot - top + 8);
+    g.font = "600 11px 'Golos Text', system-ui"; const tw = g.measureText(t).width + 10;
+    g.fillRect(x - 1, bot, 2, 26); g.fillRect(x - tw / 2, bot + 24, tw, 17);
+    g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, x, bot + 33);
+  });
+}
+$("heat").addEventListener("mousemove", (e) => {
+  if (!heatGeom) return; const r = $("heat").getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const { rowH, pw, cw, x0 } = heatGeom, i = Math.floor((y - HT) / rowH), tip = $("tip");
+  let j = x >= HL && x < HL + pw ? 0 : (x >= HL + pw + GAP && x < HL + 2 * pw + GAP ? 1 : -1);
+  if (i < 0 || i >= S || j < 0) { tip.style.display = "none"; return; }
+  const d = j === 0 ? "north" : "south", k = x0 + Math.floor((x - HL - j * (pw + GAP)) / cw);
+  let text;
+  if (state.mode === "diff") { const a = P.data.policy.fill[d][i][k], b = P.data.baseline.fill[d][i][k];
+    text = a == null || b == null ? "нет движения" : `политика ${sfmt((a - b) * 100)} п.п. к режиму без управления`; }
+  else { const f = P.data[variantOf()].fill[d][i][k], l = P.data[variantOf()].left[d][i][k];
+    text = f == null ? "нет движения" : `заполнение ${Math.round(f * 100)} %` + (l > 0.5 ? `, не уехали ${fmt(l)} чел.` : ""); }
+  tip.textContent = `${P.segs[i].tip}, ${j === 0 ? "на север" : "на юг"}, ${P.times[k]}: ${text}`;
+  tip.style.display = "block"; tip.style.left = Math.min(x + 12, r.width - tip.offsetWidth - 4) + "px"; tip.style.top = (y + 14) + "px";
+});
+$("heat").addEventListener("mouseleave", () => { $("tip").style.display = "none"; });
+
+// ---------- line strip ("now") ----------
+const NS = "http://www.w3.org/2000/svg";
+let stripEls = null;
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; }
+function buildStrip() {
+  const sv = $("strip"); sv.innerHTML = ""; const w = sv.clientWidth, L = 70, R = 24, dx = (w - L - R) / (ST - 1), yN = 52, yS = 118, yL = 85;
+  el("text", { x: 0, y: yN + 4, fill: C.muted, "font-size": 12 }, sv).textContent = "на север";
+  el("text", { x: 0, y: yS + 4, fill: C.muted, "font-size": 12 }, sv).textContent = "на юг";
+  el("line", { x1: L, x2: w - R, y1: yL, y2: yL, stroke: C.line1, "stroke-width": 3 }, sv);
+  const segs = [];
+  for (let i = 0; i < S; i++) {
+    const x = L + i * dx + 3, wd = dx - 6, row = {};
+    for (const [d, y] of [["north", yN], ["south", yS]]) {
+      const r = el("rect", { x, y: y - 14, width: wd, height: 28, rx: 4 }, sv);
+      const t = el("text", { x: x + wd / 2, y: y + 4, "text-anchor": "middle", "font-size": 11, "font-weight": 600 }, sv);
+      const ti = el("title", {}, r); row[d] = { r, t, ti };
+    }
+    segs.push(row);
+  }
+  const st = [];
+  for (let s = 0; s < ST; s++) {
+    const x = L + s * dx;
+    const q = el("circle", { cx: x, cy: yL, r: 0, fill: C.tight, "fill-opacity": .85, stroke: C.ink, "stroke-width": 1.5 }, sv);
+    el("circle", { cx: x, cy: yL, r: 4, fill: "#fff", stroke: C.line1, "stroke-width": 2 }, sv);
+    const qt = el("title", {}, q);
+    const lab = el("text", { x, y: 150, "font-size": 11.5, fill: C.ink, "text-anchor": "end", transform: `rotate(-40 ${x} 150)` }, sv);
+    lab.textContent = P.stations[s];
+    st.push({ q, qt });
+  }
+  stripEls = { segs, st };
+}
+function drawStrip() {
+  if (!stripEls) buildStrip();
+  const v = variantOf(), D = P.data[v];
+  for (let i = 0; i < S; i++) for (const d of ["north", "south"]) {
+    const f = at(D.fill[d][i], state.pos), e = stripEls.segs[i][d];
+    e.r.setAttribute("fill", smooth(f));
+    e.t.textContent = f != null && f > 0.8 ? Math.round(f * 100) + "%" : "";
+    e.t.setAttribute("fill", f != null && f >= FULL ? "#fff" : C.ink);
+    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `заполнение ${Math.round(f * 100)} %`);
+  }
+  for (let s = 0; s < ST; s++) {
+    const a = at(D.queues.north[s], state.pos) || 0, b = at(D.queues.south[s], state.pos) || 0, tot = a + b;
+    stripEls.st[s].q.setAttribute("r", tot < 1 ? 0 : Math.max(5, Math.min(26, Math.sqrt(tot) * 1.1)));
+    stripEls.st[s].qt.textContent = `${P.stations[s]}: на север ${fmt(a)}, на юг ${fmt(b)} чел.`;
+  }
+}
+
+// ---------- waiting chart ----------
+let waitGeom = null;
+function buildWait() {
+  const sv = $("wait"); sv.innerHTML = ""; const w = sv.clientWidth, h = 230, L = 46, R = 10, T = 10, B = 26;
+  const x0 = P.first, x1 = P.last, maxW = Math.max(1, ...P.data.baseline.kpi.waiting, ...P.data.policy.kpi.waiting);
+  const X = (k) => L + (k - x0) / Math.max(1, x1 - x0) * (w - L - R), Y = (v) => T + (1 - v / maxW) * (h - T - B);
+  for (const f of [0, 0.5, 1]) {
+    el("line", { x1: L, x2: w - R, y1: Y(maxW * f), y2: Y(maxW * f), stroke: C.rule }, sv);
+    el("text", { x: L - 6, y: Y(maxW * f) + 4, "text-anchor": "end", "font-size": 11, fill: C.muted }, sv).textContent = fmt(maxW * f);
+  }
+  for (let k = x0; k <= x1; k++) if (P.times[k].endsWith(":00") && +P.times[k].slice(0, 2) % 4 === 2)
+    el("text", { x: X(k), y: h - 6, "text-anchor": "middle", "font-size": 11, fill: C.muted }, sv).textContent = P.times[k];
+  for (const [v, col, dash] of [["baseline", C.muted, "5 4"], ["policy", C.calm, ""]]) {
+    let dpath = ""; for (let k = x0; k <= x1; k++) dpath += (k === x0 ? "M" : "L") + X(k).toFixed(1) + " " + Y(P.data[v].kpi.waiting[k]).toFixed(1);
+    el("path", { d: dpath, fill: "none", stroke: col, "stroke-width": 2, "stroke-dasharray": dash }, sv);
+  }
+  const ph = el("line", { y1: T, y2: h - B, stroke: C.ink, "stroke-width": 2 }, sv);
+  waitGeom = { X, ph };
+  $("waitSub").innerHTML = `<span style="color:${C.calm}">— с политикой</span>&nbsp;&nbsp;<span style="color:${C.muted}">- - без управления</span>`;
+}
+function drawWait() { if (!waitGeom) buildWait(); const x = waitGeom.X(state.pos); waitGeom.ph.setAttribute("x1", x); waitGeom.ph.setAttribute("x2", x); }
+
+// ---------- KPIs and actions ----------
+function chip(id, d, lowerIsBetter = true) {
+  const e = $(id); if (state.mode === "baseline") { e.textContent = "режим без управления"; e.className = "chip"; return; }
+  if (Math.round(d) === 0) { e.textContent = "как без управления"; e.className = "chip"; return; }
+  e.textContent = sfmt(d) + " к режиму без управления"; e.className = "chip " + ((d < 0) === lowerIsBetter ? "good" : "bad");
+}
+function overCount(v) { let c = 0; for (const d of ["north", "south"]) for (let i = 0; i < S; i++) { const f = at(P.data[v].fill[d][i], state.pos); if (f != null && f >= FULL) c++; } return c; }
+function drawKpis() {
+  const v = variantOf(), K = P.data[v].kpi, B = P.data.baseline.kpi;
+  const val = (key) => at(K[key], state.pos), base = (key) => at(B[key], state.pos);
+  $("k_wait").textContent = fmt(val("waiting")); chip("d_wait", val("waiting") - base("waiting"));
+  $("k_denied").textContent = fmt(val("denied")); chip("d_denied", val("denied") - base("denied"));
+  $("k_wpm").textContent = fmt(val("wait_pax_min")); chip("d_wpm", val("wait_pax_min") - base("wait_pax_min"));
+  const oc = overCount(v); $("k_over").textContent = oc + " из " + 2 * S; chip("d_over", oc - overCount("baseline"));
+}
+let shownActs = -1;
+function drawActs() {
+  const k = Math.floor(state.pos), done = P.actions.filter(a => a.k <= k);
+  $("actSub").textContent = `Политика: ${P.policy}. Показаны решения до ${P.times[k]}, новые сверху.`;
+  if (done.length === shownActs) return; shownActs = done.length;
+  const ul = $("acts"); ul.innerHTML = "";
+  if (!done.length) { ul.innerHTML = '<li class="empty" style="display:block">Пока действий нет.</li>'; return; }
+  for (const a of done.slice().reverse()) {
+    const li = document.createElement("li"); if (a.what === "Ошибка источника") li.className = "err";
+    li.innerHTML = `<span>${a.time}</span><span><b></b> <span class="tg"></span><br><span class="st"></span></span>`;
+    li.querySelector("b").textContent = a.what; li.querySelector(".tg").textContent = a.target; li.querySelector(".st").textContent = a.status;
+    ul.appendChild(li);
+  }
+}
+
+// ---------- render loop ----------
+function render() {
+  state.pos = Math.min(P.last, Math.max(P.first, state.pos));
+  const k = Math.floor(state.pos), mins = (state.pos - k) * 15;
+  const [hh, mm] = P.times[k].split(":").map(Number), tot = (hh * 60 + mm + Math.floor(mins)) % 1440;
+  const t = String(Math.floor(tot / 60)).padStart(2, "0") + ":" + String(tot % 60).padStart(2, "0");
+  $("clock").textContent = t; $("nowTitle").textContent = "Линия в " + t;
+  const thumb = $("thumb"), w = $("scrub").clientWidth, cw = w / (P.last - P.first + 1);
+  thumb.style.left = ((state.pos - P.first + 0.5) * cw - 1) + "px"; thumb.dataset.t = t;
+  $("scrub").setAttribute("aria-valuenow", k); $("scrub").setAttribute("aria-valuetext", t);
+  drawHeat(); drawStrip(); drawWait(); drawKpis(); drawActs();
+}
+let lastTs = null;
+function loop(ts) {
+  if (state.playing) {
+    if (lastTs != null) state.pos += (ts - lastTs) / 1000 * state.speed;
+    if (state.pos >= P.last) { state.pos = P.last; setPlaying(false); }
+    render();
+  }
+  lastTs = ts; requestAnimationFrame(loop);
+}
+function setPlaying(on) {
+  state.playing = on && state.pos < P.last; const b = $("play");
+  b.classList.toggle("on", state.playing); b.title = state.playing ? "Пауза" : "Пуск"; b.setAttribute("aria-label", b.title);
+  $("playIcon").innerHTML = state.playing ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+}
+function step(d) { setPlaying(false); state.pos = Math.round(state.pos) + d; render(); }
+$("play").onclick = () => { if (state.pos >= P.last) state.pos = P.first; setPlaying(!state.playing); };
+$("stop").onclick = () => { setPlaying(false); state.pos = P.first; render(); };
+$("back").onclick = () => step(-1);
+$("next").onclick = () => step(1);
+$("speed").addEventListener("click", (e) => { const s = e.target.dataset.s; if (!s) return; state.speed = +s;
+  [...$("speed").children].forEach(b => b.classList.toggle("on", b === e.target)); });
+$("mode").onchange = (e) => { state.mode = e.target.value; heatCache = null; drawOverview(); drawLegend(); render(); };
+function drawLegend() {
+  const items = state.mode === "diff"
+    ? [["политика разгрузила", C.good], ["без изменений", "#EEF1F4"], ["политика добавила нагрузку", C.over], ["нет движения", "#F7F8F9"]]
+    : [["до 50 %", C.quiet], ["50–80 %", C.calm], ["80–99 %", C.tight], ["поезд полон, люди остаются на платформе", C.over], ["нет движения", "#F7F8F9"]];
+  $("legend").innerHTML = items.map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
+}
+$("meta").textContent = `МСК, ${P.date}, сценарий «${P.scenario}»`;
+function layout() {
+  if (!document.body.clientWidth) return; // not laid out yet; ResizeObserver calls again
+  heatCache = null; stripEls = null; waitGeom = null; drawOverview(); render();
+}
+new ResizeObserver(() => layout()).observe(document.body);
+// Start at once; redraw when the web font arrives (fonts.ready can stay pending inside the iframe).
+requestAnimationFrame(loop); drawLegend(); layout();
+if (document.fonts) document.fonts.ready.then(layout);
+</script>
+</body>
+</html>

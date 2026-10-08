@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -141,50 +141,50 @@ def _app(run_dir, monkeypatch):
     return AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
 
 
-def _btn(at, label):
-    return next(b for b in at.button if b.label == label)
-
-
-def _kpis(at):
-    return [(m.label, m.value, m.delta) for m in at.metric]
-
-
 def test_app_sim_tab(result, tmp_path, monkeypatch):
     run_dir = scenario.write_run(result, tmp_path)
     at = _app(run_dir, monkeypatch).run()
     assert not at.exception
-    first = _kpis(at)
-    k0 = timeline.heat_grid(result.timeline, "policy", "north").ks[0]
-    assert k0 > 0 and at.session_state["player"].k == k0
-    _btn(at, ":material/skip_next:").click().run()
-    _btn(at, ":material/skip_next:").click().run()
-    assert at.session_state["player"].k == k0 + 2
-    at.selectbox(key="sim_station").select("ploshchad_lenina").run()
-    assert at.session_state["player"].k == k0 + 2
     at.selectbox(key="s4_station").select_index(1).run()
-    assert at.session_state["player"].k == k0 + 2
-    _btn(at, ":material/stop:").click().run()
-    assert at.session_state["player"].k == k0
     assert not at.exception
-    assert _kpis(at) == first
 
 
-def test_app_slider_and_variant(result, tmp_path, monkeypatch):
-    run_dir = scenario.write_run(result, tmp_path)
-    at = _app(run_dir, monkeypatch).run()
-    assert not at.exception
-    at.session_state["player"] = Player(n_frames=result.timeline.n_frames, k=3, playing=True)
-    at.run()
-    t0 = timeline.to_msk(timeline._parse(result.timeline.frames["policy"][0]["t"]))
-    t0 = t0.replace(tzinfo=None)
-    at.slider(key="sim_k").set_value(t0 + 40 * timedelta(minutes=15)).run()
-    p = at.session_state["player"]
-    assert p.k == 40 and not p.playing
-    for v in ("Без управления", "Разница", "С политикой (mock)"):
-        at.selectbox(key="sim_variant").set_value(v).run()
-        assert not at.exception
-        assert at.session_state["player"].k == 40
-    assert len(at.metric) == 3
+def test_sim_payload(result):
+    from metro_control.line import load_line
+    from metro_control.sim_view import player_html, sim_payload
+
+    tl = result.timeline
+    names = {s.id: s.name_ru for s in load_line().stations}
+    acts = [
+        {
+            "as_of": tl.frames["policy"][12]["t"],
+            "action": "remove_train",
+            "target": f"{tl.stations[1]}__{tl.stations[0]}",
+            "status": "applied",
+        },
+        {
+            "as_of": tl.frames["policy"][3]["t"],
+            "status": "source_error",
+            "source": "policy",
+            "reason": "boom </script>",
+        },
+        {"bad": 1},
+    ]
+    p = sim_payload(tl, names, acts, "mock")
+    n, s = tl.n_frames, len(tl.stations)
+    assert p["stations"][0] == names[tl.stations[-1]]  # north terminal first
+    assert len(p["segs"]) == s - 1 and len(p["times"]) == n
+    for v in ("baseline", "policy"):
+        for d in ("north", "south"):
+            assert len(p["data"][v]["fill"][d]) == s - 1
+            assert all(len(row) == n for row in p["data"][v]["fill"][d])
+            assert len(p["data"][v]["queues"][d]) == s
+        assert p["data"][v]["kpi"]["waiting"][5] == tl.frames[v][5]["waiting"]
+    assert 0 < p["first"] < p["last"] < n
+    assert [a["what"] for a in p["actions"]] == ["Снять поезд", "Ошибка источника"]
+    assert p["actions"][0]["k"] == 13
+    html = player_html(p)
+    assert "__PAYLOAD__" not in html and "boom <\\/script>" in html
 
 
 def test_app_no_timeline(tmp_path, monkeypatch):
@@ -200,19 +200,6 @@ def test_trains_in_service_counts_departed_only(result):
         assert fr[0]["trains_in_service"] == 0
         assert 0 < fr[48]["trains_in_service"] < 100
     assert result.timeline.frames["baseline"][-1]["trains_in_service"] == 0
-
-
-def test_app_playing_is_time_driven(result, tmp_path, monkeypatch):
-    import time
-
-    run_dir = scenario.write_run(result, tmp_path)
-    at = _app(run_dir, monkeypatch).run()
-    at.session_state["player"] = Player(n_frames=result.timeline.n_frames, k=5, playing=True)
-    at.session_state["last_tick"] = time.monotonic()
-    at.selectbox(key="sim_station").select("ploshchad_lenina").run()
-    assert at.session_state["player"].k == 5
-    at.selectbox(key="s4_station").select_index(1).run()
-    assert at.session_state["player"].k == 5
 
 
 def test_find_sim_dir(tmp_path):

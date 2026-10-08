@@ -15,10 +15,10 @@ PAPER = "#F4F5F7"
 INK = "#1B2430"
 MUTED = "#6B7685"
 LINE1 = "#D6083B"
-CALM_LO = "#E6EDF3"
-CALM_HI = "#2F5D8C"
-TIGHT = "#E9A23B"
-OVER = "#C4122F"
+CALM_LO = "#E1EEF8"
+CALM_HI = "#0078C9"
+TIGHT = "#EA7125"
+OVER = "#D6083B"
 NONE_COLOR = "#C9CED6"
 FONT = "Golos Text, sans-serif"
 
@@ -59,7 +59,7 @@ DIFF_SCALE = [[0.0, CALM_HI], [0.5, "#FFFFFF"], [1.0, OVER]]
 
 # Heatmap: four flat bands (no gradient) so the day reads at a glance; the app draws the legend.
 QUIET_AT = 0.5
-QUIET = "#D5E0EB"
+QUIET = "#CFE3F3"
 HEAT_BANDS = [
     ("до 50 %", QUIET),
     ("50–80 %", CALM_HI),
