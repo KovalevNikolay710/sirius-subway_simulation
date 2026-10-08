@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -146,7 +146,7 @@ def _btn(at, label):
 
 
 def _kpis(at):
-    return [df.value.to_dict() for df in at.dataframe]
+    return [(m.label, m.value, m.delta) for m in at.metric]
 
 
 def test_app_sim_tab(result, tmp_path, monkeypatch):
@@ -154,17 +154,37 @@ def test_app_sim_tab(result, tmp_path, monkeypatch):
     at = _app(run_dir, monkeypatch).run()
     assert not at.exception
     first = _kpis(at)
+    k0 = timeline.heat_grid(result.timeline, "policy", "north").ks[0]
+    assert k0 > 0 and at.session_state["player"].k == k0
     _btn(at, "Шаг +15 мин").click().run()
     _btn(at, "Шаг +15 мин").click().run()
-    assert at.session_state["player"].k == 2
+    assert at.session_state["player"].k == k0 + 2
     at.selectbox(key="sim_station").select("ploshchad_lenina").run()
-    assert at.session_state["player"].k == 2
+    assert at.session_state["player"].k == k0 + 2
     at.selectbox(key="s4_station").select_index(1).run()
-    assert at.session_state["player"].k == 2
+    assert at.session_state["player"].k == k0 + 2
     _btn(at, "Сброс").click().run()
-    assert at.session_state["player"].k == 0
+    assert at.session_state["player"].k == k0
     assert not at.exception
     assert _kpis(at) == first
+
+
+def test_app_slider_and_variant(result, tmp_path, monkeypatch):
+    run_dir = scenario.write_run(result, tmp_path)
+    at = _app(run_dir, monkeypatch).run()
+    assert not at.exception
+    at.session_state["player"] = Player(n_frames=result.timeline.n_frames, k=3, playing=True)
+    at.run()
+    t0 = timeline.to_msk(timeline._parse(result.timeline.frames["policy"][0]["t"]))
+    t0 = t0.replace(tzinfo=None)
+    at.slider(key="sim_k").set_value(t0 + 40 * timedelta(minutes=15)).run()
+    p = at.session_state["player"]
+    assert p.k == 40 and not p.playing
+    for v in ("Без управления", "Разница", "С политикой (mock)"):
+        at.radio(key="sim_variant").set_value(v).run()
+        assert not at.exception
+        assert at.session_state["player"].k == 40
+    assert len(at.metric) == 3
 
 
 def test_app_no_timeline(tmp_path, monkeypatch):
@@ -211,3 +231,58 @@ def test_actions_until_skips_malformed():
     acts = [good, 5, {"x": 1}, {"as_of": "bad"}, {"as_of": 7}]
     t = datetime(2026, 9, 30, 11, 0, tzinfo=UTC)
     assert timeline.actions_until(acts, t) == [good]
+
+
+def _fr(t, segs):
+    return {
+        "t": t,
+        "queues": {},
+        "segments": {k: {"fill": f, "left_behind": lb} for k, (f, lb) in segs.items()},
+        "waiting": 0.0,
+        "denied": 0.0,
+        "wait_pax_min": 0.0,
+        "trains_in_service": 0,
+    }
+
+
+def _heat_tl():
+    ts = ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z", "2026-01-01T00:30:00Z"]
+    base = [
+        _fr(ts[0], {}),
+        _fr(ts[1], {"A__B": (0.5, 0.0), "B__A": (0.4, 0.0)}),
+        _fr(ts[2], {}),
+    ]
+    pol = [
+        _fr(ts[0], {}),
+        _fr(ts[1], {"A__B": (0.8, 5.0), "C__B": (0.9, 0.0)}),
+        _fr(ts[2], {}),
+    ]
+    return timeline.Timeline(
+        run_id="r",
+        scenario="s",
+        date="2026-01-01",
+        capacity=100.0,
+        stations=["A", "B", "C"],
+        frames={"baseline": base, "policy": pol},
+    )
+
+
+def test_heat_grid_shape_trim_and_diff():
+    tl = _heat_tl()
+    g = timeline.heat_grid(tl, "policy", "north")
+    assert g.ks == [1] and g.times == ["03:15"]
+    assert g.seg_labels == ["B", "C"] and g.seg_tips == ["A → B", "B → C"]
+    assert g.z == [[0.8], [None]] and g.left_behind[0][0] == 5.0
+    d = timeline.heat_grid(tl, "diff", "north")
+    assert d.z[0][0] == pytest.approx(0.3) and d.z[1][0] is None
+    s = timeline.heat_grid(tl, "diff", "south")
+    assert s.seg_tips == ["B → A", "C → B"]
+    assert s.z == [[None], [None]]
+    b = timeline.heat_grid(tl, "baseline", "south")
+    assert b.z[0] == [0.4]
+
+
+def test_heat_grid_real_shape(result):
+    g = timeline.heat_grid(result.timeline, "diff", "north")
+    assert len(g.z) == 18 and all(len(r) == len(g.ks) for r in g.z)
+    assert 0 < len(g.ks) < 97

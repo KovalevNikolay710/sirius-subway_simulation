@@ -6,13 +6,14 @@ import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from metro_control.screen import band
 from metro_control.sim import NORTH, SimParams, SimState, onboard, pending_wait_pax_min, waiting
+from metro_control.timeutil import to_msk
 
 FILE = "timeline.json"
 STEP_MIN = 15
@@ -231,3 +232,75 @@ def tick(
     if not p.playing or not (last is None or now - last >= period * 0.9):
         return p, last
     return step(p), now
+
+
+@dataclass(frozen=True)
+class HeatGrid:
+    """Segment x time matrix for one direction; `z[segment][time]`."""
+
+    seg_labels: list[str]
+    seg_tips: list[str]
+    ks: list[int]
+    times: list[str]
+    z: list[list[float | None]]
+    left_behind: list[list[float]]
+
+
+def _seg_fill(fr: dict[str, Any], key: str) -> tuple[float | None, float]:
+    s = fr["segments"].get(key)
+    return (None, 0.0) if s is None else (s["fill"], s["left_behind"])
+
+
+def heat_grid(
+    tl: Timeline,
+    variant: Literal["baseline", "policy", "diff"],
+    direction: Literal["north", "south"],
+    names: dict[str, str] | None = None,
+) -> HeatGrid:
+    """Heat-map matrix over service frames; diff = policy - baseline fill.
+
+    Row label is the upper (later in `stations`) station of the pair.
+    """
+    nm = names or {}
+    st = tl.stations
+    pairs = []
+    for i in range(len(st) - 1):
+        a, b = (st[i], st[i + 1]) if direction == "north" else (st[i + 1], st[i])
+        pairs.append((st[i + 1], a, b))
+    ks = [
+        k
+        for k in range(tl.n_frames)
+        if any(
+            fr[k]["segments"].get(f"{a}__{b}") is not None
+            for fr in tl.frames.values()
+            for _, a, b in pairs
+        )
+    ]
+    if ks:
+        ks = list(range(ks[0], ks[-1] + 1))
+    z: list[list[float | None]] = []
+    lb: list[list[float]] = []
+    for _, a, b in pairs:
+        key = f"{a}__{b}"
+        zr: list[float | None] = []
+        lr: list[float] = []
+        for k in ks:
+            if variant == "diff":
+                f0, _ = _seg_fill(tl.frames["baseline"][k], key)
+                f1, l1 = _seg_fill(tl.frames["policy"][k], key)
+                zr.append(None if f0 is None or f1 is None else f1 - f0)
+                lr.append(l1)
+            else:
+                f, lv = _seg_fill(tl.frames[variant][k], key)
+                zr.append(f)
+                lr.append(lv)
+        z.append(zr)
+        lb.append(lr)
+    return HeatGrid(
+        seg_labels=[nm.get(u, u) for u, _, _ in pairs],
+        seg_tips=[f"{nm.get(a, a)} → {nm.get(b, b)}" for _, a, b in pairs],
+        ks=ks,
+        times=[f"{to_msk(_parse(tl.frames['policy'][k]['t'])):%H:%M}" for k in ks],
+        z=z,
+        left_behind=lb,
+    )
