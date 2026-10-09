@@ -41,6 +41,18 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 .thumb::after { content: attr(data-t); position: absolute; top: -19px; left: 50%; transform: translateX(-50%);
   background: #fff; color: var(--ink); font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
 
+.srcerr { color: var(--over); font-size: 12px; margin-top: 8px; }
+.srcerr[hidden], .dec[hidden], #fchip[hidden] { display: none; }
+#fchip { background: var(--console-2); color: #AEB7C4; align-self: flex-end; margin-bottom: 7px; }
+.dec { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; background: var(--console-2); border-radius: 10px; font-size: 13px; }
+.dec .tx { flex: 1; min-width: 0; }
+.dec .tx p { margin: 2px 0 0; color: #DDE3EA; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.dec .chip { background: #fff; color: var(--ink); flex: none; }
+.dec .x { flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; cursor: pointer; background: transparent; color: #DDE3EA; font-size: 16px; line-height: 1; }
+.dec .x:hover { background: rgba(255,255,255,.14); }
+.dec .x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.acts li.sel { background: #D6E8F8; box-shadow: inset 0 0 0 1px var(--ink); }
+
 /* Panels */
 .panel .sub { color: var(--muted); font-size: 12.5px; margin: 3px 0 8px; }
 .legend .dm { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1px; margin: 0 6px 0 2px; border-color: var(--ink); }
@@ -89,7 +101,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 </head>
 <body>
 <div class="wrap">
-  <div id="banner"></div>
+  <div id="banner" class="dec" hidden></div>
   <section class="console" aria-label="Проигрыватель симуляции" title="Клавиши: ← → шаг 15 минут, Shift + ← → час, ↑ ↓ скорость, Home и End, пробел — пуск и пауза">
     <div class="row">
       <button class="btn stepb" id="back" title="Назад на 15 минут" aria-label="Назад на 15 минут"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
@@ -101,6 +113,13 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
       <label class="ctl">Скорость
         <div class="seg" id="speed"><button data-s="1" class="on">×1</button><button data-s="2">×2</button><button data-s="4">×4</button></div>
       </label>
+      <label class="ctl">Спрос
+        <select id="demand">
+          <option value="fact" selected>Факт</option>
+          <option value="forecast"__FORECAST_OFF__>Прогноз</option>
+        </select>
+      </label>
+      <span class="chip" id="fchip" hidden></span>
       <label class="ctl">Режим
         <select id="mode">
           <option value="baseline">Без управления</option>
@@ -116,6 +135,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
       <div class="hours" id="hours"></div>
     </div>
   </section>
+  <div id="srcerr" class="srcerr" hidden></div>
 
   <section class="panel">
     <div class="head" style="margin-bottom:8px" title="Тяните по карте, чтобы перемотать"><h3>Загрузка линии за день</h3><div class="legend" id="legend"></div></div>
@@ -150,9 +170,10 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 
 <script>
 //__UI_JS__
-const P = __PAYLOAD__;
-const N = P.times.length, S = P.segs.length, ST = P.stations.length, DIRS = ["north", "south"];
-const state = { pos: P.first, playing: false, speed: 1, mode: "policy" };
+const FACT = __PAYLOAD__, TWIN = __TWIN__;
+let P = FACT, N = 0, S = 0, ST = 0;
+const DIRS = ["north", "south"];
+const state = { pos: FACT.first, playing: false, speed: 1, mode: "policy", demand: "fact" };
 let dirty = true;
 let focusAct = -1; // decision under the pointer / keyboard focus: highlights its target and window
 
@@ -175,10 +196,14 @@ function dragArea(elm, mapper, onStart) {
 }
 
 // ---------- scrubber ----------
-const peaks = {};
-for (const v of ["baseline", "policy"]) { peaks[v] = [];
-  for (let k = 0; k < N; k++) { let m = null; for (const d of DIRS) for (const row of P.data[v].ratio[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]); peaks[v].push(m); } }
-const maxWait = Math.max(1, ...P.data.baseline.kpi.waiting, ...P.data.policy.kpi.waiting);
+let peaks = {}, maxWait = 1;
+function derive() {
+  N = P.times.length; S = P.segs.length; ST = P.stations.length; peaks = {};
+  for (const v of ["baseline", "policy"]) { peaks[v] = [];
+    for (let k = 0; k < N; k++) { let m = null; for (const d of DIRS) for (const row of P.data[v].ratio[d]) if (row[k] != null) m = Math.max(m ?? 0, row[k]); peaks[v].push(m); } }
+  maxWait = Math.max(1, ...P.data.baseline.kpi.waiting, ...P.data.policy.kpi.waiting);
+}
+derive();
 let ovCache = null;
 function buildOverview() {
   const cv = $("overview"), w = cv.clientWidth, h = 44, dpr = devicePixelRatio || 1; if (!w) return;
@@ -209,6 +234,7 @@ dragArea($("scrub"), (cx) => { const r = $("scrub").getBoundingClientRect();
   return P.first + Math.min(1, Math.max(0, (cx - r.left) / r.width)) * (P.last - P.first + 1) - 0.5; });
 // Keyboard: ← → 15 min (Shift: 1 h), ↑ ↓ speed, Home/End, space play/pause.
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && selAct >= 0) { select(-1); return; }
   if (e.target.tagName === "SELECT") return;
   const big = e.shiftKey ? 4 : 1;
   switch (e.key) {
@@ -227,7 +253,7 @@ document.addEventListener("keydown", (e) => {
 // ---------- heatmap ----------
 let HL = 170; const HT = 22, HB = 44, GAP = 16, ROW = 17;
 let heatCache = null, G = null;
-const lift = new Float32Array(2 * S); let hover = -1; // hover = panel * S + row
+let lift = new Float32Array(2 * S); let hover = -1; // hover = panel * S + row
 function buildHeat() {
   const cv = $("heat"), w = cv.clientWidth; if (!w) return;
   const h = HT + S * ROW + HB, dpr = devicePixelRatio || 1;
@@ -435,10 +461,21 @@ function buildActs() {
       li.addEventListener("mouseenter", () => setF(idx)); li.addEventListener("mouseleave", () => { if (li !== document.activeElement) setF(-1); });
       li.addEventListener("focus", () => { if (li.matches(":focus-visible")) setF(idx); }); li.addEventListener("blur", () => setF(-1));
     }
-    const go = () => { setPlaying(false); seek(a.k); };
+    const go = () => { setPlaying(false); seek(a.k); select(idx); };
     li.onclick = go; li.onkeydown = (e) => { if (e.key === "Enter") go(); };
     ul.appendChild(li);
   });
+}
+let selAct = -1;
+function select(i) {
+  selAct = i; [...$("acts").children].forEach((li, n) => { li.classList.toggle("sel", n === i); li.setAttribute("aria-selected", n === i ? "true" : "false"); });
+  const a = i >= 0 ? P.actions[i] : null, host = $("banner");
+  if (!a || !a.llm) { host.hidden = true; host.innerHTML = ""; return; }
+  host.innerHTML = '<div class="tx"><b></b><p></p></div><span class="chip">YandexGPT</span><button class="x" aria-label="Закрыть" title="Закрыть (Esc)">\u2715</button>';
+  host.querySelector("b").textContent = `${a.time} ${a.what} ${a.target}`;
+  const p = host.querySelector("p"); p.textContent = a.llm_text; p.title = a.llm_text;
+  host.querySelector(".x").onclick = () => select(-1);
+  host.hidden = false;
 }
 let curAct = -2;
 function drawActs() {
@@ -510,6 +547,20 @@ function setSpeed(dir, exact) {
   state.speed = SPEEDS[j]; [...$("speed").children].forEach(b => b.classList.toggle("on", +b.dataset.s === state.speed));
 }
 $("speed").addEventListener("click", (e) => { const s = e.target.dataset.s; if (s) setSpeed(0, +s); });
+function srcErrors() {
+  const errs = P.actions.filter(a => a.error), box = $("srcerr");
+  box.hidden = !errs.length; if (!errs.length) { box.textContent = ""; return; }
+  box.textContent = errs.slice(0, 3).map(a => `${a.time} ошибка источника ${a.target}: ${a.status}`).join("; ") + (errs.length > 3 ? `; ещё ${errs.length - 3}` : "");
+}
+function setDemand(d) {
+  const src = d === "forecast" && TWIN ? TWIN : FACT; state.demand = src === TWIN ? "forecast" : "fact"; P = src;
+  derive(); lift = new Float32Array(2 * S); hover = -1; state.pos = clampPos(state.pos);
+  $("meta").textContent = `МСК, ${P.date}, сценарий «${P.scenario}», политика: ${P.policy}`;
+  const fc = $("fchip"); fc.hidden = state.demand !== "forecast"; fc.textContent = "прогноз q50: " + (P.forecast || "mock");
+  heatCache = null; ovCache = null; stripEls = null; W = null; focusAct = -1; curAct = -2; follow = true;
+  buildActs(); select(-1); srcErrors(); dirty = true;
+}
+$("demand").onchange = (e) => setDemand(e.target.value);
 $("mode").onchange = (e) => { state.mode = e.target.value; heatCache = null; ovCache = null; drawLegend(); dirty = true; };
 function drawLegend() {
   const items = state.mode === "diff"
@@ -518,7 +569,7 @@ function drawLegend() {
   $("legend").innerHTML = items.map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join("") +
     `<span><i class="dm" style="background:${C.over}"></i>снимает перегрузку</span><span><i class="dm" style="background:#fff"></i>другое решение</span>`;
 }
-renderBanner(P.banner, $("banner"));
+srcErrors();
 $("meta").textContent = `МСК, ${P.date}, сценарий «${P.scenario}», политика: ${P.policy}`;
 function layout() { if (!document.body.clientWidth) return; heatCache = null; ovCache = null; stripEls = null; W = null; dirty = true; }
 buildActs(); drawLegend();

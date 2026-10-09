@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
-from metro_control.events import anomaly_slots, banner_height
+from metro_control.events import anomaly_slots
 from metro_control.figures import CALM_HI, INK, MUTED, OVER, TIGHT
 from metro_control.screen import (
     action_card,
@@ -104,8 +104,7 @@ def forecast_tab():
         team_ctx = read_team_context(run_dir)
         anomaly = anomaly_slots(fc_pkg.payload.rows) if fc_pkg is not None else None
         payload = load_payload(load_pkg, names, marks, ctx=team_ctx, anomaly=anomaly)
-        height = 392 + banner_height(payload["banner"])
-        components.html(load_html(payload), height=height, scrolling=False)
+        components.html(load_html(payload), height=392, scrolling=False)
 
     todo = actionable(recs.items)
     if todo or recs.problems:

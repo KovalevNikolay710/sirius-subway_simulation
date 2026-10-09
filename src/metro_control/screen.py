@@ -421,3 +421,65 @@ def rec_evidence(rec: Recommendation, load_pkg: LoadPackage | None) -> dict[str,
             "capacity": peak.departures * peak.capacity_per_train,
         },
     }
+
+
+INK = "#1B2430"  # mirrors figures.INK (figures pulls in plotly, which screen avoids)
+_HEADER_CSS = (
+    "<style>.lsel{position:relative}"
+    ".lsel summary{list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;"
+    "padding:2px 6px 2px 2px;border-radius:999px}"
+    ".lsel summary::-webkit-details-marker{display:none}"
+    ".lsel summary:hover{background:#EEF1F4}"
+    ".lsel .chev{width:8px;height:8px;border-right:2px solid #5B6675;"
+    "border-bottom:2px solid #5B6675;"
+    "transform:rotate(45deg) translate(-2px,-2px);transition:transform .15s}"
+    ".lsel[open] .chev{transform:rotate(225deg)}"
+    ".lsel ul{position:absolute;z-index:999;left:0;top:42px;margin:0;padding:6px;list-style:none;"
+    "background:#fff;border:1px solid #DDE3EA;border-radius:10px;"
+    "box-shadow:0 6px 18px rgba(27,36,48,.16);"
+    "min-width:340px;white-space:nowrap}"
+    ".lsel li{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px;"
+    "font-size:14px;color:#1B2430;margin:0}"
+    ".lsel li[aria-disabled=true]{opacity:.4;cursor:not-allowed}"
+    ".lsel li[aria-selected=true]{background:#F2F6FA;font-weight:600}</style>"
+)
+
+
+def _roundel(x: Any, ring: bool = False) -> str:
+    style = (
+        "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;"
+        f"border-radius:50%;background:{x.color};color:#fff;font-weight:700;font-size:16px;"
+        "flex:none;"
+    )
+    if ring:
+        style += f"box-shadow:0 0 0 2px #fff,0 0 0 4px {x.color};"
+    return f'<span style="{style}">{x.id}</span>'
+
+
+def header_html(network: list[Any], line: Any) -> str:
+    """Page header: title, line drop-down (inactive lines greyed) and the line name block."""
+    active_id = str(line.id)
+    items = []
+    for x in network:
+        if str(x.id) == active_id:
+            items.append(
+                f'<li role="option" aria-selected="true" title="{x.name_ru}">'
+                f"{_roundel(x)}<span>{x.name_ru}</span></li>"
+            )
+        else:
+            items.append(
+                f'<li role="option" aria-disabled="true" title="{x.name_ru}: нет данных">'
+                f"{_roundel(x)}<span>{x.name_ru}</span></li>"
+            )
+    cur = next((x for x in network if str(x.id) == active_id), line)
+    return (
+        f"{_HEADER_CSS}"
+        f'<div style="margin-bottom:22px"><div style="font-size:26px;font-weight:700;'
+        f'line-height:1.2;color:{INK}">Метро Петербурга</div>'
+        '<div style="display:flex;align-items:center;margin-top:8px">'
+        '<details class="lsel"><summary aria-label="Выбор линии">'
+        f'{_roundel(cur, True)}<span class="chev"></span></summary>'
+        f'<ul role="listbox">{"".join(items)}</ul></details>'
+        f'<span class="line-name" style="margin-left:16px;font-size:18px;font-weight:600;'
+        f'color:{line.color}">{line.name_ru}</span></div></div>'
+    )

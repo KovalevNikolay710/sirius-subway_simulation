@@ -193,5 +193,5 @@ def test_app_source_error(tmp_path, monkeypatch, result):
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
     at.switch_page("views/sim.py").run()
     assert not at.exception
-    text = " ".join(x.value for x in at.warning) + " ".join(x.value for x in at.markdown)
-    assert "ошибка источника" in text and "x.py:f" in text
+    html = " ".join(getattr(e.proto, "srcdoc", "") for e in at.get("iframe"))
+    assert 'id="srcerr"' in html and "RuntimeError: boom" in html and not at.warning

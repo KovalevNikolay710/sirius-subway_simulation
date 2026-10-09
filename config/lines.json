@@ -1,5 +1,5 @@
 {
- "version": "0.1",
+ "version": "0.2",
  "source": "metro.spb.ru official line colours / names",
  "lines": [
   {
@@ -30,6 +30,12 @@
    "id": "5",
    "name_ru": "Фрунзенско-Приморская линия",
    "color": "#702785",
+   "active": false
+  },
+  {
+   "id": "6",
+   "name_ru": "Красносельско-Калининская линия",
+   "color": "#8B4513",
    "active": false
   }
  ]
