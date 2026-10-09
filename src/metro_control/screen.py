@@ -360,9 +360,26 @@ def load_recommendations(run_dir: Path | str, single: PackageResult | None = Non
     return RecList(items, problems)
 
 
+def llm_cached_text(run_dir: Path | str, rec_id: Any) -> str | None:
+    """YandexGPT text from `explanations/yandexgpt/<id>.txt` if that dir's meta.json says so."""
+    if not rec_id:
+        return None
+    d = Path(run_dir) / "explanations" / "yandexgpt"
+    try:
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        if not isinstance(meta, dict) or meta.get("source") != "yandexgpt":
+            return None
+        return _read_text(d / f"{rec_id}.txt")
+    except (OSError, ValueError):
+        return None
+
+
 def explanation_for(run_dir: Path | str, rec: Recommendation) -> tuple[str, str]:
     """Person 4 text for this recommendation (`explanations/<id>.txt`, else `explanation.txt`),
     or the recommendation's own reason."""
+    llm = llm_cached_text(run_dir, rec.payload.recommendation_id)
+    if llm:
+        return llm, "yandexgpt"
     if rec.payload.source == "person4":
         own = _read_text(Path(run_dir) / "explanations" / f"{rec.payload.recommendation_id}.txt")
         if own:

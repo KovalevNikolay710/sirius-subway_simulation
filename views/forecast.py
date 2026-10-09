@@ -124,7 +124,13 @@ def forecast_tab():
                 ):
                     text, origin = explanation_for(run_dir, rec)
                     st.write(text)
-                    tags = [":violet-badge[человек 4]"] if origin == "person4" else []
+                    tags = (
+                        [":violet-badge[YandexGPT]"]
+                        if origin == "yandexgpt"
+                        else [":violet-badge[человек 4]"]
+                        if origin == "person4"
+                        else []
+                    )
                     if card["is_mock"]:
                         tags.append(":gray-badge[mock]")
                     if tags:

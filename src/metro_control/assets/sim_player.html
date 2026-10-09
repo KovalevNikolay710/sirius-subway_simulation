@@ -427,6 +427,7 @@ function buildActs() {
     li.innerHTML = `<span></span><span><b></b> <span class="tg"></span><span class="badge" hidden>снимает перегрузку</span><span class="st"></span><span class="ba"></span></span>`;
     li.children[0].textContent = a.time; li.querySelector("b").textContent = a.what; li.querySelector(".tg").textContent = a.target;
     li.querySelector(".badge").hidden = !a.critical;
+    if (a.llm) { const t = document.createElement("span"); t.className = "chip"; t.textContent = "YandexGPT"; t.style.marginLeft = "6px"; li.querySelector(".tg").after(t); }
     li.querySelector(".st").textContent = a.status + (a.reason ? ": " + a.reason : ""); li.title = a.reason || "";
     const idx = P.actions.indexOf(a), setF = (v) => { if (focusAct !== v) { focusAct = v; dirty = true; } };
     if (a.ba) {
