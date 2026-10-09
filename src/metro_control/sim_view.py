@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from metro_control.events import station_reasons, team_banner
 from metro_control.line import load_line
 from metro_control.screen import action_row
 from metro_control.timeline import KPI_KEYS, VARIANTS, Timeline, frame
@@ -61,7 +62,11 @@ def _critical(ac: dict[str, Any], seg: int | None, d: str | None, k: int, data: 
 
 
 def sim_payload(
-    tl: Timeline, names: dict[str, str], actions: list[dict[str, Any]], policy_label: str
+    tl: Timeline,
+    names: dict[str, str],
+    actions: list[dict[str, Any]],
+    policy_label: str,
+    events: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Everything the player draws, indexed [variant][...][k] over all frames.
 
@@ -140,7 +145,12 @@ def sim_payload(
                 "critical": _critical(ac, seg, d, k, data),
             }
         )
+    ev = events or {}
+    anomaly, reasons = ev.get("anomaly") or {}, ev.get("reasons") or {}
     return {
+        "banner": ev.get("banner"),
+        "anomaly": [anomaly.get(s) or [False] * n for s in order],
+        "reasons": [reasons.get(s) or [[] for _ in range(n)] for s in order],
         "scenario": SCENARIO_RU.get(tl.scenario, tl.scenario),
         "date": _date_ru(tl.date),
         "policy": policy_label,
@@ -155,12 +165,17 @@ def sim_payload(
 
 
 def load_payload(
-    load_pkg: Any, names: dict[str, str], recs: list[dict[str, Any]] | None = None
+    load_pkg: Any,
+    names: dict[str, str],
+    recs: list[dict[str, Any]] | None = None,
+    ctx: dict | None = None,
+    anomaly: dict[str, set[datetime]] | None = None,
 ) -> dict[str, Any]:
     """Forecast segment load for the in-browser strip: fill[dir][seg][t] over the package slots.
 
     `recs`: [{"title", "target" (shown text), "target_id" (segment or station id), "start", "end"
     (UTC datetimes), "window", "is_mock"}] — each is outlined on the strip during its window.
+    `ctx`: person 2 team context (banner, reasons); `anomaly`: station -> flagged slot starts.
     """
     line = load_line()
     order = [s.id for s in sorted(line.stations, key=lambda s: s.order, reverse=True)]
@@ -196,7 +211,12 @@ def load_payload(
                 "slots": [i for i, t in enumerate(slots) if rec["start"] <= t < rec["end"]],
             }
         )
+    by_station = station_reasons(ctx, slots)
+    flagged = anomaly or {}
     return {
+        "banner": team_banner(ctx, names),
+        "reasons": [by_station.get(s) or [[] for _ in slots] for s in order],
+        "anomaly": [[t in flagged.get(s, ()) for t in slots] for s in order],
         "times": [f"{to_msk(t):%H:%M}" for t in slots],
         "stations": [names.get(s, s) for s in order],
         "segs": [{"label": s["label"], "tip": s["tip"]} for s in segs],
