@@ -207,6 +207,7 @@ def _compare(args: argparse.Namespace) -> int:
             forecast_fn=forecast_fn,
             policy_label=args.policy or "mock",
             forecast_label=args.forecast or "mock",
+            demand=args.demand,
         )
     except ValueError as e:
         print(f"error: {e}".splitlines()[0], file=sys.stderr)
@@ -222,6 +223,8 @@ def _compare(args: argparse.Namespace) -> int:
             f"{m.max_fill:>9.3f}{m.train_km:>10.0f}"
         )
     print(f"actions: {dict(sorted(res.outcomes.items()))}")
+    if args.demand == "forecast":
+        print(f"demand: forecast ({args.forecast or 'mock'})")
     print(f"wrote {run_dir}")
     print(f"wall: {time.perf_counter() - t0:.1f} s")
     return 0
@@ -403,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--policy", default=None, help="plug-in policy, module:func or file.py:func")
     cp.add_argument(
         "--forecast", default=None, help="plug-in forecast, module:func or file.py:func"
+    )
+    cp.add_argument(
+        "--demand",
+        choices=["truth", "forecast"],
+        default="truth",
+        help="demand of the replay: organizer truth (default) or rolling forecast q50",
     )
     cp.set_defaults(func=_compare)
     return parser

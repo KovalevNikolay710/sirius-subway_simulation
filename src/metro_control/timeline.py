@@ -211,9 +211,19 @@ def find_sim_dir(env_value: str | None, runs_root: Path) -> Path | None:
     if not runs_root.is_dir():
         return None
     for d in sorted(runs_root.glob("compare-*"), key=lambda x: x.name, reverse=True):
+        if d.name.endswith("-forecast"):
+            continue
         if (d / FILE).is_file():
             return d
     return None
+
+
+def forecast_twin(sim_dir: Path | None) -> Path | None:
+    """The `<sim_dir>-forecast` run (demand = forecast) if it holds a timeline file."""
+    if sim_dir is None:
+        return None
+    twin = sim_dir.with_name(sim_dir.name + "-forecast")
+    return twin if (twin / FILE).is_file() else None
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 
@@ -199,6 +199,47 @@ def _source_error(as_of: datetime, source: str, reason: str, outcome: str) -> di
     }
 
 
+def forecast_day_entries(
+    day: pl.DataFrame,
+    history_all: pl.DataFrame,
+    forecast_fn: Callable[..., Any] | None,
+    spec: dict[str, Any],
+    d: date,
+) -> tuple[pl.DataFrame, list[dict[str, Any]]]:
+    """Replace the day's entries by the rolling q50 forecast (horizon 15 min, issued at the slot).
+
+    Each slot t uses only history with ts < t; the announced surge is applied as the policy's
+    load sees it. A plug-in failure or missing row falls back to the mock for that slot.
+    """
+    errors: list[dict[str, Any]] = []
+    values: dict[tuple[str, datetime], float] = {}
+    for t in day["ts"].unique().sort().to_list():
+        hist = history_all.filter(pl.col("ts") < t)
+        stations = day.filter(pl.col("ts") == t)["station_id"].to_list()
+        rows: dict[str, float] = {}
+        if forecast_fn is not None:
+            fc, err = plugins.call_forecast(forecast_fn, hist, t)
+            if err is not None:
+                errors.append(_source_error(t, "forecast", err, "mock forecast used"))
+            elif fc is not None:
+                rows = {r.station_id: r.q50 for r in fc.payload.rows if r.ts == t}
+                if any(st not in rows for st in stations):
+                    errors.append(
+                        _source_error(t, "forecast", "missing forecast row", "mock forecast used")
+                    )
+        if any(st not in rows for st in stations):
+            mf = mock.mock_forecast(hist, t)
+            fallback = {r.station_id: r.q50 for r in mf.payload.rows if r.ts == t}
+            rows = {**fallback, **rows}
+        sg, sw = _surge_for(spec, d, t)
+        in_win = sw is not None and sw[0] <= t < sw[1]
+        for st in stations:
+            values[(st, t)] = rows.get(st, 0.0) * (sg.get(st, 1.0) if in_win else 1.0)
+    new = [values[(s, t)] for s, t in zip(day["station_id"], day["ts"], strict=True)]
+    out = day.with_columns(pl.Series("entries", new, dtype=pl.Float64).cast(day.schema["entries"]))
+    return out.select(day.columns), errors
+
+
 def compare(
     scenario: str,
     entries: pl.DataFrame,
@@ -209,6 +250,7 @@ def compare(
     forecast_fn: Callable[..., Any] | None = None,
     policy_label: str = "mock",
     forecast_label: str = "mock",
+    demand: Literal["truth", "forecast"] = "truth",
 ) -> CompareResult:
     """Run one service day twice on the same demand and initial state.
 
@@ -222,9 +264,25 @@ def compare(
     if day.height == 0:
         raise ValueError(f"no entries for {d}")
     truth = apply_scenario(day, spec)
-    params, demand, trips, origin, dtype = build_day(truth, truth, line, od_params, assumptions)
     others = entries.filter(utc_day != d)
     history_all = pl.concat([others, truth.select(others.columns)]).sort("ts")
+    actions: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    if demand == "forecast":
+        fc_day, fc_errs = forecast_day_entries(truth, history_all, forecast_fn, spec, d)
+        actions.extend(fc_errs)
+        if fc_errs:
+            counts["source_error"] = len(fc_errs)
+        sim_day = fc_day
+    else:
+        sim_day = truth
+    params, arrivals, trips, origin, dtype = build_day(
+        sim_day, sim_day, line, od_params, assumptions
+    )
+    # run() filters its whole demand list on every call: hand it only the slot's arrivals
+    buckets: dict[int, list[Any]] = {}
+    for a in arrivals:
+        buckets.setdefault(int(a.t // SLOT_MIN) + 1, []).append(a)
     init = new_state(params, [], 0.0, trips)
     n_slots = int(DAY_END_MIN) // SLOT_MIN
     frames: dict[str, list[dict[str, Any]]] = {"baseline": [], "policy": []}
@@ -235,14 +293,12 @@ def compare(
     ex = executor.new_exec_state(line)
     mem = policy.PolicyMemory()
     st = new_state(params, [], 0.0, trips)
-    actions: list[dict[str, Any]] = []
-    counts: dict[str, int] = {}
     p_mark = 0
     for k in range(n_slots + 1):
         t = k * float(SLOT_MIN)
         as_of = minutes_to_utc(t, origin)
-        baseline = run(baseline, params, demand, t)
-        st = run(st, params, demand, t)
+        baseline = run(baseline, params, buckets.get(k, []), t)
+        st = run(st, params, buckets.get(k, []), t)
         frames["baseline"].append(snapshot(baseline, params, b_mark, as_of))
         frames["policy"].append(snapshot(st, params, p_mark, as_of))
         b_mark, p_mark = len(baseline.log), len(st.log)
@@ -294,6 +350,7 @@ def compare(
                 }
             )
 
+    actions.sort(key=lambda a: a["as_of"])
     if abs(baseline.entered - st.entered) > 1e-6 * max(1.0, baseline.entered):
         raise RuntimeError("baseline and policy runs saw different demand")
     for name, x in (("baseline", baseline), ("policy", st)):
@@ -301,7 +358,7 @@ def compare(
         if abs(x.entered - (x.alighted + waiting(x) + onb)) > 1e-6 * max(1.0, x.entered):
             raise RuntimeError(f"{name}: people balance violated")
 
-    run_id = f"compare-{scenario}-{d.isoformat()}"
+    run_id = f"compare-{scenario}-{d.isoformat()}" + ("-forecast" if demand == "forecast" else "")
     end = minutes_to_utc(DAY_END_MIN, origin)
     eff_payload = {
         "scenario": scenario,
@@ -330,6 +387,7 @@ def compare(
         "assumptions_sha256": _sha(json.dumps(assumptions, sort_keys=True).encode()),
         "policy": policy_label,
         "forecast": forecast_label,
+        "demand": demand,
     }
     return CompareResult(
         scenario,

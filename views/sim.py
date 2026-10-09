@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 from metro_control.events import banner_height, sim_events
 from metro_control.sim_view import player_html, sim_payload
 from metro_control.team_forecast import read_team_context
-from metro_control.timeline import frame, load_timeline
+from metro_control.timeline import forecast_twin, frame, load_timeline
 from metro_control.timeutil import to_msk
 
 ctx = st.session_state["ctx"]
@@ -56,23 +56,45 @@ VARIANT_LABELS = {
 
 
 def sim_tab():
+    cur = sim_dir
     hint = "Запустите: `uv run metro-control compare --scenario rail_surge`"
     if sim_dir is None:
         st.info("Нет записи симуляции (runs/compare-* не найден).")
         st.info(hint)
         return
-    tl, reason = load_timeline(sim_dir)
+    twin = forecast_twin(sim_dir)
+    try:
+        scen = str(json.loads((sim_dir / "manifest.json").read_text(encoding="utf-8"))["scenario"])
+    except (OSError, KeyError, ValueError, TypeError):
+        scen = sim_dir.name.removeprefix("compare-").removesuffix("-forecast").rsplit("-", 3)[0]
+    choice = st.segmented_control(
+        "Спрос",
+        ["Факт", "Прогноз"],
+        default="Факт",
+        key="sim_demand",
+        disabled=twin is None,
+    )
+    if twin is None:
+        st.caption(
+            f"нет прогона по прогнозу: `uv run metro-control compare --scenario {scen} "
+            "--demand forecast`"
+        )
+    elif choice == "Прогноз":
+        cur = twin
+    tl, reason = load_timeline(cur)
     if tl is None:
         st.info(f"Нет записи симуляции ({reason}).")
         st.info(hint)
         return
-    actions = read_actions(sim_dir / "actions.jsonl")
+    actions = read_actions(cur / "actions.jsonl")
     try:
-        policy_label = str(
-            json.loads((sim_dir / "manifest.json").read_text(encoding="utf-8"))["policy"]
-        )
+        manifest = json.loads((cur / "manifest.json").read_text(encoding="utf-8"))
+        policy_label = str(manifest["policy"])
     except (OSError, KeyError, ValueError, TypeError):
-        policy_label = "mock"
+        manifest, policy_label = {}, "mock"
+    if twin is not None and cur == twin:
+        src = manifest.get("forecast", "mock") if isinstance(manifest, dict) else "mock"
+        st.caption(f"Спрос = прогноз q50 на каждый 15-мин слот (источник: {src})")
     for ac in actions:
         if ac.get("status") == "source_error":
             try:
@@ -85,7 +107,7 @@ def sim_tab():
                 "Шаг политики пропущен, симуляция продолжилась."
             )
     frame_ts = [_ts(frame(tl, "policy", k)["t"]) for k in range(tl.n_frames)]
-    events = sim_events(sim_dir, read_team_context(ctx.run_dir), frame_ts, names)
+    events = sim_events(cur, read_team_context(ctx.run_dir), frame_ts, names)
     payload = sim_payload(tl, names, actions, policy_label, events)
     height = 1700 + banner_height(payload["banner"])
     components.html(player_html(payload), height=height, scrolling=False)
