@@ -171,3 +171,91 @@ def test_stale_team_context_removed(mock_file, tmp_path):
     rep2 = ingest([("stub.json", STUB.read_bytes())], tmp_path, now=now)
     assert rep2.run_dir == rep.run_dir
     assert not (rep2.run_dir / "team_context.json").exists()
+
+
+def _stack_file(history, tmp_path, as_of_msk_hm):
+    h, m = as_of_msk_hm
+    as_of = datetime(2026, 9, 30, h - 3, m, tzinfo=UTC)
+    obj = tf.mock_team_serve(history, as_of, model="stack")
+    p = tmp_path / f"stack_{h}{m}.json"
+    p.write_text(json.dumps(obj, ensure_ascii=False))
+    return p, obj, as_of
+
+
+@pytest.mark.parametrize("hm", [(14, 0), (14, 30)])
+def test_stack_mock(history, tmp_path, hm):
+    p, obj, as_of = _stack_file(history, tmp_path, hm)
+    assert obj["meta"]["model"] == "stack"
+    assert {r["horizon_min"] for r in obj["records"]} == {30, 60, 90, 120}
+    t = tf.read_team_forecast(p, history=history)
+    rows = t.package.payload.rows
+    assert len(rows) == 19 * 8 and t.no_data == ["tekhnologichesky_institut"]
+    assert {r.horizon_min for r in rows} == set(range(15, 121, 15))
+    assert t.package.payload.as_of == as_of and t.package.payload.status == "mock"
+    for rec in obj["records"]:
+        ts = datetime.fromisoformat(rec["ts"]).astimezone(UTC)
+        qs = [
+            r.q50
+            for r in rows
+            if r.station_id == rec["station_id"]
+            and ts <= r.ts < ts.replace() + (datetime(2000, 1, 1, 0, 30) - datetime(2000, 1, 1))
+        ]
+        assert len(qs) == 2 and sum(qs) == pytest.approx(rec["q50"], abs=1e-6)
+
+
+def test_stack_as_of_errors(history, tmp_path):
+    p, _, _ = _stack_file(history, tmp_path, (14, 0))
+    with pytest.raises(AdapterError, match=":00 or :30"):
+        tf.read_team_forecast(p, as_of=datetime(2026, 9, 30, 11, 15, tzinfo=UTC))
+    with pytest.raises(AdapterError, match="MSK hour"):
+        tf.read_team_forecast(STUB, as_of=datetime(2026, 11, 12, 14, 30, tzinfo=UTC))
+
+
+def test_fallback_note(tmp_path):
+    from metro_control.events import team_banner
+
+    rows = json.loads(STUB.read_text())
+    p = tmp_path / "fb.json"
+    p.write_text(
+        json.dumps(
+            {"records": rows, "meta": {"fallback": {"from": "stack", "reason": "нет весов"}}}
+        )
+    )
+    t = tf.read_team_forecast(p, as_of=AS_OF)
+    assert len(t.package.payload.rows) == 152
+    b = team_banner(t.context, {})
+    assert any("часовая модель" in w and "нет весов" in w for w in b["warnings"])
+
+
+def test_ingest_stack_and_cli(history, tmp_path):
+    p, _, as_of = _stack_file(history, tmp_path, (14, 30))
+    rep = ingest([("out.json", p.read_bytes())], tmp_path / "r", now=as_of)
+    assert rep.run_dir and (rep.run_dir / "team_context.json").is_file()
+    from metro_control.cli import main
+
+    out = tmp_path / "cli.json"
+    rc = main(
+        ["team-mock", "--as-of", "2026-09-30T14:30:00+03:00", "--model", "stack", "--out", str(out)]
+    )
+    assert rc == 0 and json.loads(out.read_text())["meta"]["model"] == "stack"
+
+
+def test_station_reasons_stack_span(history, tmp_path):
+    from metro_control.events import station_reasons
+
+    p, _, _ = _stack_file(history, tmp_path, (14, 0))
+    ctx = tf.read_team_forecast(p, history=history).context
+    ctx["explanations"] = [
+        {
+            "station_id": "devyatkino",
+            "ts": "2026-09-30T11:30:00Z",
+            "reasons": [{"text": "дождь", "effect_pct": 5.0}],
+        }
+    ]
+    slots = [
+        datetime(2026, 9, 30, 11, 0, tzinfo=UTC)
+        + i * (datetime(2000, 1, 1, 0, 15) - datetime(2000, 1, 1))
+        for i in range(6)
+    ]
+    rows = station_reasons(ctx, slots)["devyatkino"]
+    assert [bool(r) for r in rows] == [False, False, True, True, False, False]

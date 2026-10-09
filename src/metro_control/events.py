@@ -101,6 +101,9 @@ def team_banner(ctx: dict | None, names: dict[str, str]) -> dict | None:
         for w in (meta.get("warning"), weather_meta.get("warning"), meta.get("context"))
         if isinstance(w, str) and w.strip()
     ]
+    fb = meta.get("fallback")
+    if isinstance(fb, dict):
+        warnings.append(f"прогноз: часовая модель (стекинг недоступен: {fb.get('reason', '?')})")
     if not items and not warnings:
         return None
     mock = meta.get("model") == "mock" or str(meta.get("model_version", "")).startswith("mock")
@@ -110,6 +113,10 @@ def team_banner(ctx: dict | None, names: dict[str, str]) -> dict | None:
 def station_reasons(ctx: dict | None, slots: list[datetime]) -> dict[str, list[list[str]]]:
     """station -> per slot texts; an explanation at hour H covers slots in [H, H+1h)."""
     out: dict[str, list[list[str]]] = {}
+    meta = ctx.get("meta") if isinstance(ctx, dict) else None
+    span = (
+        timedelta(minutes=30) if isinstance(meta, dict) and meta.get("model") == "stack" else HOUR
+    )
     for e in _explanations(ctx):
         h = _ts(e.get("ts"))
         sid = e.get("station_id")
@@ -118,7 +125,7 @@ def station_reasons(ctx: dict | None, slots: list[datetime]) -> dict[str, list[l
         texts = [f"{r['text']} {effect_ru(_num(r.get('effect_pct')))}".strip() for r in _reasons(e)]
         rows = out.setdefault(sid, [[] for _ in slots])
         for i, t in enumerate(slots):
-            if h <= t < h + HOUR:
+            if h <= t < h + span:
                 rows[i].extend(x for x in texts if x not in rows[i])
     return out
 

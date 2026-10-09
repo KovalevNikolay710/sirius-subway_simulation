@@ -116,6 +116,28 @@ def _parse(name: str, data: Any) -> tuple[list[dict], dict | None, list]:
     return rows, meta, expl if isinstance(expl, list) else []
 
 
+def _slot_min(rows: list[dict]) -> int:
+    """30 for the «stack» half-hour format, 60 for the hourly one."""
+    for r in rows:
+        if r["horizon_min"] in (30, 90):
+            return 30
+        m = datetime.fromisoformat(r["ts"]).astimezone(MSK).minute
+        if m == 30:
+            return 30
+    return 60
+
+
+def _check_minute(name: str, as_of: datetime, slot_min: int) -> None:
+    m = as_of.astimezone(MSK)
+    if m.second or m.microsecond:
+        raise _err(name, f"as_of must be on an MSK hour (got {m:%H:%M})")
+    if slot_min == 30:
+        if m.minute not in (0, 30):
+            raise _err(name, f"as_of must be on :00 or :30 MSK (got {m:%H:%M})")
+    elif m.minute:
+        raise _err(name, f"as_of must be on an MSK hour (got {m:%H:%M})")
+
+
 def read_team_forecast(
     path: Path | str,
     *,
@@ -134,23 +156,23 @@ def read_team_forecast(
     prof = profile if profile is not None else load_profile()
 
     parsed = [(r, datetime.fromisoformat(r["ts"]).astimezone(UTC)) for r in rows]
-    h60 = [t for r, t in parsed if r["horizon_min"] == 60]
+    slot_min = _slot_min(rows)
+    anchor = [t for r, t in parsed if r["horizon_min"] == slot_min]
     if as_of is None:
-        if not h60:
-            raise _err(name, "no horizon_min 60 rows to derive as_of")
-        as_of = min(h60)
-        m = as_of.astimezone(MSK)
-        if m.minute or m.second or m.microsecond:
-            raise _err(name, f"as_of must be on an MSK hour (got {m:%H:%M})")
+        if not anchor:
+            raise _err(name, f"no horizon_min {slot_min} rows to derive as_of")
+        as_of = min(anchor)
+        _check_minute(name, as_of, slot_min)
     else:
         if as_of.tzinfo is None:
             raise _err(name, "as_of must be timezone-aware")
         as_of = as_of.astimezone(UTC)
-        m = as_of.astimezone(MSK)
-        if m.minute or m.second or m.microsecond:
-            raise _err(name, f"as_of must be on an MSK hour (got {m:%H:%M})")
-        if as_of not in h60:
-            raise _err(name, f"no horizon_min 60 rows for as_of {as_of.astimezone(MSK):%H:%M} MSK")
+        _check_minute(name, as_of, slot_min)
+        if as_of not in anchor:
+            raise _err(
+                name,
+                f"no horizon_min {slot_min} rows for as_of {as_of.astimezone(MSK):%H:%M} MSK",
+            )
 
     by_key: dict = {}
     for r, t in parsed:
@@ -165,15 +187,24 @@ def read_team_forecast(
     out: list[dict] = []
     no_data: list[str] = []
     for st in sorted(line.stations, key=lambda s: s.order):
-        picks = ((as_of, 60), (as_of + HOUR, 120))
-        found = [by_key.get((st.id, h, hz)) for h, hz in picks]
+        if slot_min == 60:
+            picks = [(as_of, 60, 60), (as_of + HOUR, 120, 60)]
+        else:
+            half = timedelta(minutes=30)
+            picks = [(as_of + i * half, 30 * (i + 1), 30) for i in range(4)]
+        found = [by_key.get((st.id, h, hz)) for h, hz, _ in picks]
         if any(f is None for f in found):
             no_data.append(st.id)
             continue
-        for (hour_ts, _), r in zip(picks, found, strict=True):
-            sh = shares(prof, st.id, profile_day_type(hour_ts), hour_ts.astimezone(MSK).hour)
-            for q in range(4):
-                slot = hour_ts + timedelta(minutes=15 * q)
+        for (slot_ts, _, width), r in zip(picks, found, strict=True):
+            hr = slot_ts.astimezone(MSK)
+            sh = shares(prof, st.id, profile_day_type(slot_ts), hr.hour)
+            if width == 30:
+                sh = sh[2:] if hr.minute >= 30 else sh[:2]
+                tot = sum(sh)
+                sh = tuple(x / tot for x in sh) if tot > 0 else (0.5, 0.5)
+            for q in range(len(sh)):
+                slot = slot_ts + timedelta(minutes=15 * q)
                 out.append(
                     {
                         "station_id": st.id,
@@ -257,12 +288,16 @@ def read_team_context(run_dir: Path | str) -> dict | None:
     return d if isinstance(d, dict) else None
 
 
-def mock_team_serve(history: pl.DataFrame, as_of: datetime) -> dict:
+def mock_team_serve(history: pl.DataFrame, as_of: datetime, *, model: str = "lgbm") -> dict:
     """A `serve --json` shaped demo file (18 stations, rain, trains to Moskovsky station). Mock."""
     as_of = as_of.astimezone(UTC)
     fc = mock.mock_forecast(history, as_of).model_dump(mode="json")["payload"]["rows"]
     line = load_line()
-    hours = [as_of, as_of + HOUR]
+    stack = model == "stack"
+    step = timedelta(minutes=30) if stack else HOUR
+    n_slots = 4 if stack else 2
+    nq = 2 if stack else 4
+    hours = [as_of + i * step for i in range(n_slots)]
     t0 = (as_of - HOUR).astimezone(MSK)
     records: list[dict] = []
     explanations: list[dict] = []
@@ -273,10 +308,10 @@ def mock_team_serve(history: pl.DataFrame, as_of: datetime) -> dict:
         vos = st.id == "vosstaniya"
         k = 1.12 * (1.25 if vos else 1.0)
         for i, h in enumerate(hours):
-            blk = mine[4 * i : 4 * i + 4]
+            blk = mine[nq * i : nq * i + nq]
             q50 = round(sum(r["q50"] for r in blk) * k)
             ts = h.astimezone(MSK).isoformat()
-            hz = 60 * (i + 1)
+            hz = (30 if stack else 60) * (i + 1)
             records.append(
                 {
                     "station_id": st.id,
@@ -315,7 +350,7 @@ def mock_team_serve(history: pl.DataFrame, as_of: datetime) -> dict:
         "records": records,
         "explanations": explanations,
         "meta": {
-            "model": "mock",
+            "model": "stack" if stack else "mock",
             "model_version": "mock_team_v1",
             "t0": t0.isoformat(),
             "weather": {

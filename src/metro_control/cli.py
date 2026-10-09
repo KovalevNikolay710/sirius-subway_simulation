@@ -344,7 +344,7 @@ def _team_mock(args: argparse.Namespace) -> int:
             entries = pl.read_parquet(args.entries)
         else:
             entries = synthetic_entries(date(2026, 9, 1), 28)
-        obj = mock_team_serve(entries, as_of)
+        obj = mock_team_serve(entries, as_of, model=args.model)
         Path(args.out).write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
     except (ValueError, OSError, pl.exceptions.PolarsError) as e:
         print(f"error: {e}".splitlines()[0], file=sys.stderr)
@@ -393,7 +393,10 @@ def build_parser() -> argparse.ArgumentParser:
     tb.add_argument("--forecast-as-of", default=None, help="ISO datetime with offset (tables)")
     tb.set_defaults(func=_team_bundle)
     tm = sub.add_parser("team-mock", help="write a mock `serve --json` file for the team adapter")
-    tm.add_argument("--as-of", required=True, help="MSK ISO datetime on the hour, with offset")
+    tm.add_argument(
+        "--as-of", required=True, help="MSK ISO datetime with offset (:00; stack also :30)"
+    )
+    tm.add_argument("--model", choices=["lgbm", "stack"], default="lgbm")
     tm.add_argument("--out", required=True)
     tm.add_argument("--entries", default=None)
     tm.set_defaults(func=_team_mock)
