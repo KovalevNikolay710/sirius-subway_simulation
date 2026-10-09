@@ -24,6 +24,7 @@ Load is **demand / capacity** everywhere (`band()` 4 flat bands for maps, `smoot
 - **Console**: dark bar; round play (blue, playing = orange pause), stop red, steps purple; big clock; speed segmented ×1 ×2 ×4; mode `<select>`; scrubber with day overview (waiting curve + peak band) and decision diamonds.
 - **Heatmap**: segments × time, north | south; hovered row lifts and grows (eased, shadow); future dimmed; playhead with time label; drag anywhere to seek.
 - **Line strip**: horizontal line, segments above (north) / below (south) coloured by load, % only above 80 %; queues = orange circles; hover scales an element; recent decision target outlined (red pulse if critical).
+- **Event banner** (`renderBanner`, payload `banner`): card above the player with chips «Погода» (blue) / «Событие» (orange): text, effect, where; `mock` chip; warnings in a muted line; scenario items carry «сценарий (допущение)». Absent when there is nothing to say. Station dots: `<title>` = name + reasons of the slot; anomaly = dashed orange ring (r 11) + legend «аномалия».
 - **KPI cards**: label, big number, chip vs baseline (green better / red worse).
 - **Decision list**: chronological, follows the playhead (eased scroll), past / current / future states, red left bar + badge for critical, click = seek.
 - **Slider (forecast)**: native range, continuous drag, snaps on release, time bubble; strip eases between slots.

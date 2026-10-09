@@ -9,8 +9,10 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
+from metro_control.events import banner_height, sim_events
 from metro_control.sim_view import player_html, sim_payload
-from metro_control.timeline import load_timeline
+from metro_control.team_forecast import read_team_context
+from metro_control.timeline import frame, load_timeline
 from metro_control.timeutil import to_msk
 
 ctx = st.session_state["ctx"]
@@ -82,8 +84,11 @@ def sim_tab():
                 f"{ac.get('reason', '')}. "
                 "Шаг политики пропущен, симуляция продолжилась."
             )
-    payload = sim_payload(tl, names, actions, policy_label)
-    components.html(player_html(payload), height=1700, scrolling=False)
+    frame_ts = [_ts(frame(tl, "policy", k)["t"]) for k in range(tl.n_frames)]
+    events = sim_events(sim_dir, read_team_context(ctx.run_dir), frame_ts, names)
+    payload = sim_payload(tl, names, actions, policy_label, events)
+    height = 1700 + banner_height(payload["banner"])
+    components.html(player_html(payload), height=height, scrolling=False)
 
 
 if ctx.bundle is None:

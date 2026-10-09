@@ -19,3 +19,15 @@ function smooth(f) {
 }
 const NS = "http://www.w3.org/2000/svg";
 const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+// Weather / event banner (docs/design.md). `b` = payload.banner or null; host = empty #banner element.
+function renderBanner(b, host) {
+  if (!b) { host.style.display = "none"; return; }
+  const chips = b.items.map(i => `<span class="bc ${i.kind}" title="${esc(i.note || "")}"><span>${i.kind === "weather" ? "Погода" : "Событие"}</span><b>${esc(i.text)}</b>` +
+    (i.effect ? `<span>${esc(i.effect)}</span>` : "") + `<em>${esc(i.where)}${i.window ? ", " + esc(i.window) : ""}</em>` + (i.note ? `<em>${esc(i.note)}</em>` : "") + `</span>`).join("");
+  const notes = (b.warnings || []).map(esc).join(" · ");
+  host.className = "banner";
+  host.innerHTML = `<span class="bt">Что влияет на загрузку</span>${chips}` + (b.mock ? `<span class="chip">mock</span>` : "") + (notes ? `<span class="bm">${notes}</span>` : "");
+}
+// Station tooltip text: name + reasons of one slot (+ anomaly mark).
+const stationTip = (name, reasons, anom) => [name, ...(reasons || []), ...(anom ? ["аномалия"] : [])].join("\n");

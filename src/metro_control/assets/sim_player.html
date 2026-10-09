@@ -84,6 +84,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 </head>
 <body>
 <div class="wrap">
+  <div id="banner"></div>
   <section class="console" aria-label="Проигрыватель симуляции" title="Клавиши: ← → шаг 15 минут, Shift + ← → час, ↑ ↓ скорость, Home и End, пробел — пуск и пауза">
     <div class="row">
       <button class="btn stepb" id="back" title="Назад на 15 минут" aria-label="Назад на 15 минут"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
@@ -324,7 +325,8 @@ function buildStrip() {
     el("circle", { cx: x, cy: yL, r: 4, fill: "#fff", stroke: C.line1, "stroke-width": 2 }, gq);
     const qt = el("title", {}, gq);
     el("text", { x, y: 146, "font-size": 11.5, fill: C.ink, "text-anchor": "end", transform: `rotate(-40 ${x} 146)` }, sv).textContent = P.stations[s];
-    st.push({ q, qt }); }
+    const ring = el("circle", { cx: x, cy: yL, r: 11, fill: "none", stroke: C.tight, "stroke-width": 2, "stroke-dasharray": "3 2", visibility: "hidden", class: "anom", "pointer-events": "none" }, gq);
+    st.push({ q, qt, ring }); }
   stripEls = { segs, st };
 }
 function drawStrip() {
@@ -338,12 +340,14 @@ function drawStrip() {
     e.t.setAttribute("fill", f != null && f > OVER ? "#fff" : C.ink);
     const hit = recent.filter(a => a.seg === i && a.dir === d);
     e.r.setAttribute("class", hit.length ? "hl" + (hit.some(a => a.critical) ? " crit" : "") : "");
-    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `спрос ${Math.round(f * 100)} % вместимости`) + (hit.length ? `. Решение: ${hit[hit.length - 1].what}` : "");
+    const why = [...new Set([...P.reasons[i][k], ...P.reasons[i + 1][k]])];
+    e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `спрос ${Math.round(f * 100)} % вместимости`) + (hit.length ? `. Решение: ${hit[hit.length - 1].what}` : "") + (why.length ? "\n" + why.join("\n") : "");
   }
   for (let s = 0; s < ST; s++) {
     const a = at(D.queues.north[s], state.pos) || 0, b = at(D.queues.south[s], state.pos) || 0, tot = a + b;
     stripEls.st[s].q.setAttribute("r", tot < 1 ? 0 : Math.max(5, Math.min(24, Math.sqrt(tot) * 1.05)));
-    stripEls.st[s].qt.textContent = `${P.stations[s]}: на север ${fmt(a)}, на юг ${fmt(b)} чел.`;
+    stripEls.st[s].qt.textContent = stationTip(`${P.stations[s]}: на север ${fmt(a)}, на юг ${fmt(b)} чел.`, P.reasons[s][k], P.anomaly[s][k]);
+    stripEls.st[s].ring.setAttribute("visibility", P.anomaly[s][k] ? "visible" : "hidden");
   }
 }
 
@@ -482,6 +486,7 @@ function drawLegend() {
   $("legend").innerHTML = items.map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join("") +
     `<span><i class="dm" style="background:${C.over}"></i>снимает перегрузку</span><span><i class="dm" style="background:#fff"></i>другое решение</span>`;
 }
+renderBanner(P.banner, $("banner"));
 $("meta").textContent = `МСК, ${P.date}, сценарий «${P.scenario}», политика: ${P.policy}`;
 function layout() { if (!document.body.clientWidth) return; heatCache = null; ovCache = null; stripEls = null; W = null; dirty = true; }
 buildActs(); drawLegend();
