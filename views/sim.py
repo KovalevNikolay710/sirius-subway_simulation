@@ -108,7 +108,7 @@ def sim_tab():
             )
     frame_ts = [_ts(frame(tl, "policy", k)["t"]) for k in range(tl.n_frames)]
     events = sim_events(cur, read_team_context(ctx.run_dir), frame_ts, names)
-    payload = sim_payload(tl, names, actions, policy_label, events)
+    payload = sim_payload(tl, names, actions, policy_label, events, cur)
     height = 1700 + banner_height(payload["banner"])
     components.html(player_html(payload), height=height, scrolling=False)
 

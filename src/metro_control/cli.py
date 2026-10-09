@@ -275,6 +275,19 @@ def _mock_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _explain(args: argparse.Namespace) -> int:
+    from metro_control.llm_text import explain_run
+
+    run = Path(args.run)
+    kind = args.kind or ("sim" if (run / "actions.jsonl").is_file() else "forecast")
+    meta = explain_run(run, kind=kind)
+    if meta["source"] == "yandexgpt":
+        print(f"wrote {meta['n']} texts (yandexgpt)")
+    else:
+        print(f"no texts: {meta.get('error')} (mock)")
+    return 0
+
+
 def _team_bundle(args: argparse.Namespace) -> int:
     from datetime import datetime
 
@@ -384,6 +397,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-surge", action="store_true", help="no demo demand surge (real day as in the data)"
     )
     mb.set_defaults(func=_mock_bundle)
+    ex = sub.add_parser("explain", help="YandexGPT dispatcher texts for a run, cached as files")
+    ex.add_argument("--run", required=True)
+    ex.add_argument("--kind", choices=["forecast", "sim"], default=None)
+    ex.set_defaults(func=_explain)
     tb = sub.add_parser("team-bundle", help="import person 2 / person 4 files into a run dir")
     tb.add_argument("--out", default="runs/team")
     tb.add_argument("--forecast", default=None)

@@ -109,12 +109,22 @@ def before_after(data: dict, seg: int | None, d: str | None, ks: list[int]) -> d
     }
 
 
+def _llm_text(sim_dir: Path | str | None, rec_id: Any) -> str:
+    """Cached YandexGPT text (`<sim_dir>/explanations/yandexgpt/<rec_id>.txt`) or ''."""
+    from metro_control.screen import llm_cached_text
+
+    if sim_dir is None:
+        return ""
+    return llm_cached_text(sim_dir, rec_id) or ""
+
+
 def sim_payload(
     tl: Timeline,
     names: dict[str, str],
     actions: list[dict[str, Any]],
     policy_label: str,
     events: dict[str, Any] | None = None,
+    sim_dir: Path | str | None = None,
 ) -> dict[str, Any]:
     """Everything the player draws, indexed [variant][...][k] over all frames.
 
@@ -187,6 +197,7 @@ def sim_payload(
         if ks and not err:
             lo, hi = _ts(frame_ts[ks[0]]) - timedelta(minutes=15), _ts(frame_ts[ks[-1]])
             win = f"{to_msk(lo):%H:%M}–{to_msk(hi):%H:%M}"
+        llm = _llm_text(sim_dir, ac.get("recommendation_id"))
         acts.append(
             {
                 "k": k,
@@ -194,7 +205,9 @@ def sim_payload(
                 "what": what,
                 "target": target,
                 "status": status,
-                "reason": str(ac.get("reason", "")),
+                "reason": llm or str(ac.get("reason", "")),
+                "llm": bool(llm),
+                "rec_id": ac.get("recommendation_id"),
                 "seg": seg,
                 "dir": d,
                 "applied": ac.get("status") == "applied",
