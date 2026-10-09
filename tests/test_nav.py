@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_load_lines():
     lines = load_lines()
-    assert [x.id for x in lines] == ["1", "2", "3", "4", "5"]
+    assert [x.id for x in lines] == ["1", "2", "3", "4", "5", "6"]
     assert [x.id for x in lines if x.active] == ["1"]
 
 
@@ -46,7 +46,7 @@ def test_header_and_pages(tmp_path, monkeypatch):
     assert not at.exception
     head = " ".join(m.value for m in at.markdown)
     assert "Метро Петербурга" in head
-    assert head.count("нет данных") == 4
+    assert head.count("нет данных") == 5
     for x in load_lines():
         assert f'title="{x.name_ru}' in head
     assert at.warning  # missing run_dir on the forecast page

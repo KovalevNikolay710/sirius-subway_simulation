@@ -29,7 +29,6 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; }
 </style>
 </head>
 <body>
-<div id="banner"></div>
 <section class="panel">
   <div class="head"><h3>Загрузка перегонов: прогноз</h3><div class="legend">
     <span><i style="background:#CFE3F3"></i>до 50 %</span><span><i style="background:#0078C9"></i>50–80 %</span>
@@ -49,7 +48,6 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; }
 const P = __PAYLOAD__;
 const T = P.times.length, S = P.segs.length, ST = P.stations.length, DIRS = ["north", "south"];
 const at = (arr, pos) => { const k = Math.floor(pos); return lerp(arr[k], arr[Math.min(k + 1, T - 1)], pos - k); };
-renderBanner(P.banner, $("banner"));
 if (P.anomaly.some(r => r.some(Boolean))) $("anomLeg").style.display = "";
 const state = { pos: 0, target: 0 };
 let dirty = true;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -206,6 +207,7 @@ def sim_payload(
                 "target": target,
                 "status": status,
                 "reason": llm or str(ac.get("reason", "")),
+                "llm_text": llm,
                 "llm": bool(llm),
                 "rec_id": ac.get("recommendation_id"),
                 "seg": seg,
@@ -301,18 +303,41 @@ def load_payload(
 ASSETS = Path(__file__).parent / "assets"
 
 
-def _page(name: str, payload: dict[str, Any]) -> str:
+LLM_BANNER_H = 84  # iframe growth (px) for the selected-decision banner
+
+
+def llm_banner_h(*payloads: dict[str, Any] | None) -> int:
+    """LLM_BANNER_H if any action of any payload carries a YandexGPT text, else 0."""
+    return LLM_BANNER_H if any(a.get("llm") for p in payloads if p for a in p["actions"]) else 0
+
+
+def _page(name: str, payload: dict[str, Any], **extra: str) -> str:
     """A self-contained player page: shared ui.css / ui.js inlined, payload inlined
     (`</` escaped so data cannot close the script)."""
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     html = (ASSETS / name).read_text(encoding="utf-8")
     html = html.replace("/*__UI_CSS__*/", (ASSETS / "ui.css").read_text(encoding="utf-8"))
     html = html.replace("//__UI_JS__", (ASSETS / "ui.js").read_text(encoding="utf-8"))
+    for key, val in extra.items():
+        html = html.replace(key, val)
     return html.replace("__PAYLOAD__", data)
 
 
-def player_html(payload: dict[str, Any]) -> str:
-    return _page("sim_player.html", payload)
+def _js(payload: dict[str, Any] | None) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def player_html(payload: dict[str, Any], twin: dict[str, Any] | None = None) -> str:
+    """Sim player; `payload` = fact run, `twin` = forecast-demand run (None: Прогноз disabled)."""
+    scen = payload.get("scen", "<scenario>")
+    hint = escape(f"uv run metro-control compare --scenario {scen} --demand forecast", quote=True)
+    off = f' disabled title="{hint}"' if twin is None else ""
+    return _page(
+        "sim_player.html",
+        payload,
+        __TWIN__=_js(twin),
+        __FORECAST_OFF__=off,
+    )
 
 
 def load_html(payload: dict[str, Any]) -> str:

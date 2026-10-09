@@ -8,9 +8,8 @@ from types import SimpleNamespace
 
 import streamlit as st
 
-from metro_control.figures import INK
 from metro_control.line import load_line, load_lines
-from metro_control.screen import load_bundle, source_statuses
+from metro_control.screen import header_html, load_bundle, source_statuses
 from metro_control.timeline import find_sim_dir
 
 line = load_line()
@@ -22,35 +21,28 @@ if line.id != active.id:
 st.set_page_config(page_title=f"Диспетчер: {line.name_ru}", layout="wide")
 st.markdown(
     """<style>
-[data-testid="stMainBlockContainer"], .block-container { padding-top: 1.2rem; }
+[data-testid="stMainBlockContainer"], .block-container { padding: 1.2rem 1.5rem 3rem 1.5rem; }
 [data-testid="stHeader"] { height: 0; background: transparent; }
 [data-testid="stVerticalBlockBorderWrapper"] { background: #FFFFFF; border-radius: 10px; }
-</style>""",
+/* sidebar: hidden at rest, a 16 px handle stays at the left edge; hover / focus slides it in */
+[data-testid="stSidebar"] { position: fixed !important; left: 0; top: 0; bottom: 0; z-index: 1000;
+  min-width: 0 !important; transform: translateX(calc(-100% + 16px)) !important; visibility: visible !important;
+  transition: transform .22s ease-out, box-shadow .22s ease-out; box-shadow: none; }
+[data-testid="stSidebar"]:hover, [data-testid="stSidebar"]:has(:focus-visible) {
+  transform: translateX(0) !important; box-shadow: 6px 0 24px rgba(27,36,48,.18); }
+[data-testid="stSidebar"]::after { content: "\\2630"; position: absolute; right: 0; top: 0; bottom: 0; width: 16px;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; color: #5B6675;
+  background: #EEF1F4; transition: opacity .15s; pointer-events: none; }
+[data-testid="stSidebar"]:hover::after, [data-testid="stSidebar"]:has(:focus-visible)::after { opacity: 0; }
+[data-testid="stSidebarCollapseButton"], [data-testid="stSidebarCollapsedControl"],
+[data-testid="stExpandSidebarButton"] { display: none !important; }
+[data-testid="stSidebarContent"] { display: flex; flex-direction: column; height: 100%; padding-right: 16px; }
+[data-testid="stSidebarUserContent"] { margin-top: auto; }
+</style>""",  # noqa: E501
     unsafe_allow_html=True,
 )
 
-
-def roundel(x) -> str:
-    base = (
-        "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;"
-        f"border-radius:50%;background:{x.color};color:#fff;font-weight:700;font-size:16px;"
-    )
-    if x.active:
-        style = base + f"box-shadow:0 0 0 2px #fff,0 0 0 4px {x.color};"
-        return f'<span title="{x.name_ru}" style="{style}">{x.id}</span>'
-    style = base + "opacity:.35;cursor:not-allowed;"
-    return f'<span title="{x.name_ru}: нет данных" style="{style}">{x.id}</span>'
-
-
-st.markdown(
-    f"""<div style="margin-bottom:22px"><div style="font-size:26px;font-weight:700;
-line-height:1.2;color:{INK}">Метро Петербурга</div>
-<div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-{"".join(roundel(x) for x in network)}
-<span style="margin-left:6px;font-size:18px;font-weight:600;color:{line.color}">
-{line.name_ru}</span></div></div>""",
-    unsafe_allow_html=True,
-)
+st.markdown(header_html(network, line), unsafe_allow_html=True)
 
 # An upload on the "Данные" page switches the screen to its run dir for this browser session.
 run_dir = Path(st.session_state.get("run_dir") or os.environ.get("METRO_RUN_DIR", "runs/demo"))
