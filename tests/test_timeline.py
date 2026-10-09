@@ -197,12 +197,71 @@ def test_app_no_timeline(tmp_path, monkeypatch):
     assert any("compare --scenario rail_surge" in i.value for i in at.info)
 
 
-def test_trains_in_service_counts_departed_only(result):
+def test_trains_on_line_hand_built():
+    from metro_control.sim import StopLog, Train, cancel_trip
+
+    p = SimParams(("A", "B", "C"), (2.0, 2.0), 0.5, 3.0, 100.0)
+    st = new_state(p, [], 0.0, [])
+    st.trains["A"] = Train("A", 0, "north", one_way=True)
+    st.trains["B"] = Train("B", 0, "north", one_way=True)
+    st.trains["C"] = Train("C", 2, "north", in_service=False, one_way=True)
+    st.log.append(StopLog(0.0, "A", "A", "north", 0, 0, 0, 0))
+    st.log.append(StopLog(0.0, "C", "A", "north", 0, 0, 0, 0))
+    assert timeline.trains_on_line(st) == 1
+    st.events.append((5.0, 1, "B", 0, "north"))
+    assert timeline.trains_on_line(cancel_trip(st, "B")) == 1
+
+
+def _independent_count(state, stations, k):
+    first = {}
+    far = {}
+    for x in state.log:
+        first[x.train_id] = min(first.get(x.train_id, x.t), x.t)
+        end = stations[-1] if x.direction == "north" else stations[0]
+        if x.station == end:
+            far[x.train_id] = min(far.get(x.train_id, x.t), x.t)
+    t = 15.0 * k
+    return sum(1 for v in first.values() if v < t) - sum(1 for v in far.values() if v < t)
+
+
+def test_trains_in_service_matches_independent_count(result):
+    for v, st in (("baseline", result.baseline), ("policy", result.policy)):
+        for k, f in enumerate(result.timeline.frames[v]):
+            assert f["trains_in_service"] == _independent_count(st, result.timeline.stations, k), (
+                v,
+                k,
+            )
+
+
+def test_trains_in_service_bounds_and_policy_parity(result):
+    from metro_control.line import load_line
+
+    line = load_line()
+    peak = int(line.params["trains_on_line_peak"].value)
+    cap = peak + int(line.params["reserve_trains"].value)
+    assert peak == 53 and cap == 57
+    fb, fp = result.timeline.frames["baseline"], result.timeline.frames["policy"]
+    for fr in (fb, fp):
+        assert fr[0]["trains_in_service"] == fr[-1]["trains_in_service"] == 0
+        assert all(0 <= f["trains_in_service"] <= cap for f in fr)
+    first = [
+        a["as_of"]
+        for a in result.actions
+        if a.get("status") == "applied" and a.get("action") in ("add_reserve", "remove_train")
+    ]
+    lim = min(first) if first else "9999"
+    for b, p in zip(fb, fp, strict=True):
+        if b["t"] <= lim:
+            assert b["trains_in_service"] == p["trains_in_service"]
+
+
+def test_player_has_trains_kpi(result):
+    from metro_control.sim_view import player_html, sim_payload
+
+    pl_ = sim_payload(result.timeline, {}, [], "mock")
     for v in ("baseline", "policy"):
-        fr = result.timeline.frames[v]
-        assert fr[0]["trains_in_service"] == 0
-        assert 0 < fr[48]["trains_in_service"] < 100
-    assert result.timeline.frames["baseline"][-1]["trains_in_service"] == 0
+        assert len(pl_["data"][v]["kpi"]["trains_in_service"]) == result.timeline.n_frames
+    assert 'id="k_trains"' in player_html(pl_)
 
 
 def test_find_sim_dir(tmp_path):

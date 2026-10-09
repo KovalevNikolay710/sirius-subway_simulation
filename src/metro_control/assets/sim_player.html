@@ -49,7 +49,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 .heat canvas.drag { cursor: grabbing; }
 .tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; font-size: 12px; padding: 6px 8px;
   border-radius: 6px; white-space: nowrap; display: none; z-index: 2; }
-.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .kpi .lab { color: var(--muted); font-size: 12.5px; }
 .kpi .val { font-size: 28px; font-weight: 600; margin: 4px 0 6px; }
 .two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
@@ -127,6 +127,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
     <div class="panel kpi"><div class="lab">Перегонов с перегрузкой сейчас</div><div class="val" id="k_over">0</div><span class="chip" id="d_over"></span></div>
     <div class="panel kpi"><div class="lab">Отказы в посадке с начала дня</div><div class="val" id="k_denied">0</div><span class="chip" id="d_denied"></span></div>
     <div class="panel kpi"><div class="lab">Ожидание с начала дня, пасс·мин</div><div class="val" id="k_wpm">0</div><span class="chip" id="d_wpm"></span></div>
+    <div class="panel kpi"><div class="lab">Поездов на линии сейчас</div><div class="val" id="k_trains">0</div><span class="chip" id="d_trains"></span></div>
   </section>
 
   <section class="panel">
@@ -394,16 +395,17 @@ dragArea($("wait"), (cx) => { if (!W) return null; const r = $("wait").getBoundi
   return W.x0 + (cx - r.left - W.L) / (W.w - W.L - W.R) * (W.x1 - W.x0); });
 
 // ---------- KPIs ----------
-function chip(id, d) {
+function chip(id, d, neutral) {
   const e = $(id); if (state.mode === "baseline") { e.textContent = "режим без управления"; e.className = "chip"; return; }
   if (Math.round(d) === 0) { e.textContent = "как без управления"; e.className = "chip"; return; }
-  e.textContent = sfmt(d) + " к режиму без управления"; e.className = "chip " + (d < 0 ? "good" : "bad");
+  e.textContent = sfmt(d) + " к режиму без управления"; e.className = neutral ? "chip" : "chip " + (d < 0 ? "good" : "bad");
 }
 function overCount(v) { let c = 0; for (const d of DIRS) for (let i = 0; i < S; i++) { const f = at(P.data[v].ratio[d][i], state.pos); if (f != null && f > OVER) c++; } return c; }
 function drawKpis() {
   const K = P.data[variantOf()].kpi, B = P.data.baseline.kpi, val = (x) => at(K[x], state.pos), base = (x) => at(B[x], state.pos);
   for (const [id, key] of [["wait", "waiting"], ["denied", "denied"], ["wpm", "wait_pax_min"]]) {
     $("k_" + id).textContent = fmt(val(key)); chip("d_" + id, val(key) - base(key)); }
+  $("k_trains").textContent = Math.round(val("trains_in_service")); chip("d_trains", Math.round(val("trains_in_service")) - Math.round(base("trains_in_service")), true);
   const oc = overCount(variantOf()); $("k_over").textContent = oc + " из " + 2 * S; chip("d_over", oc - overCount("baseline"));
 }
 

@@ -21,9 +21,15 @@ VARIANTS = ("baseline", "policy")
 KPI_KEYS = ("waiting", "denied", "wait_pax_min", "trains_in_service")
 
 
+def trains_on_line(state: SimState) -> int:
+    """One-way trips that have left their origin terminal and not reached the far one;
+    cancelled trips excluded."""
+    departed = {x.train_id for x in state.log}
+    return sum(1 for t in state.trains.values() if t.in_service and t.train_id in departed)
+
+
 def snapshot(state: SimState, params: SimParams, log_from: int, t_utc: datetime) -> dict[str, Any]:
     """State at a 15-min boundary; segment loads come from stops logged since `log_from`."""
-    departed = {x.train_id for x in state.log}
     queues: dict[str, dict[str, float]] = {}
     for (st, d), q in sorted(state.queues.items()):
         w = sum(sum(c.by_dest.values()) for c in q)
@@ -51,9 +57,7 @@ def snapshot(state: SimState, params: SimParams, log_from: int, t_utc: datetime)
         "waiting": round(waiting(state), 1),
         "onboard": round(onboard(state), 1),
         "wait_pax_min": round(state.wait_pax_min + pending_wait_pax_min(state), 1),
-        "trains_in_service": sum(
-            1 for t in state.trains.values() if t.in_service and t.train_id in departed
-        ),
+        "trains_in_service": trains_on_line(state),
         "queues": queues,
         "segments": {
             k: {

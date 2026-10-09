@@ -427,6 +427,11 @@
    "unit": "min",
    "source": "organizers: full round trip (data_notes §3)"
   },
+  "trains_on_line_peak": {
+   "value": 53,
+   "unit": "trains",
+   "source": "organizers: rolling schedule photo, weekday from 01.09 — trains on line peak 53 (data_notes §3)"
+  },
   "reserve_trains": {
    "value": 4,
    "unit": "trains",
