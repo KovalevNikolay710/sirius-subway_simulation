@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from metro_control.events import station_reasons, team_banner
 from metro_control.line import load_line
+from metro_control.mock import _assumption
 from metro_control.screen import action_row
 from metro_control.timeline import KPI_KEYS, VARIANTS, Timeline, frame
 from metro_control.timeutil import to_msk
@@ -61,6 +62,53 @@ def _critical(ac: dict[str, Any], seg: int | None, d: str | None, k: int, data: 
     return bool(ahead) and max(ahead) >= CRITICAL_FILL
 
 
+def window_ks(ac: dict[str, Any], frame_ts: list[Any]) -> list[int]:
+    """Frames (snapshot at t summarises (t-15, t]) inside the action window: start < t <= end.
+    Without start/end: start = as_of, end = start + policy_action_window_min. Garbage -> []."""
+    try:
+        start = _ts(ac["start"]) if ac.get("start") else _ts(ac["as_of"])
+        end = (
+            _ts(ac["end"])
+            if ac.get("end")
+            else start + timedelta(minutes=float(_assumption("policy_action_window_min")))  # type: ignore[arg-type]
+        )
+        return [
+            k
+            for k, t in enumerate(frame_ts)
+            if start < (t if isinstance(t, datetime) else _ts(t)) <= end
+        ]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return []
+
+
+def _sum(vals: list[float | None]) -> float | None:
+    xs = [x for x in vals if x is not None]
+    return sum(xs) if xs else None
+
+
+def before_after(data: dict, seg: int | None, d: str | None, ks: list[int]) -> dict | None:
+    """Baseline vs policy over the frames `ks` on one segment/direction (data = payload["data"])."""
+    if seg is None or d is None or not ks:
+        return None
+
+    def col(v: str, field: str) -> list[float | None]:
+        row = data[v].get(field, {}).get(d)
+        return [row[seg][k] for k in ks] if row else [None] * len(ks)
+
+    peak = [max((x for x in col(v, "ratio") if x is not None), default=None) for v in VARIANTS]
+    if all(p is None for p in peak):
+        return None
+    trains = [_sum(col(v, "trains")) for v in VARIANTS]
+    left = [_sum(col(v, "left")) for v in VARIANTS]
+    return {
+        "k0": min(ks),
+        "k1": max(ks),
+        "peak": peak,
+        "trains": None if None in trains else [int(x) for x in trains],  # type: ignore[arg-type]
+        "left": [None if x is None else int(round(x)) for x in left],
+    }
+
+
 def sim_payload(
     tl: Timeline,
     names: dict[str, str],
@@ -88,12 +136,13 @@ def sim_payload(
         )
     times = [f"{to_msk(_ts(frame(tl, 'policy', k)['t'])):%H:%M}" for k in range(n)]
 
-    def seg_series(v: str, key: str, field: str) -> list[float | None]:
+    def seg_series(v: str, key: str, field: str, default: Any = ...) -> list[float | None]:
         out = []
         for k in range(n):
             s = frame(tl, v, k)["segments"].get(key)
             # runs written before "ratio" existed fall back to the train fill
-            out.append(None if s is None else s.get(field, s["fill"]))
+            fb = s["fill"] if s is not None and default is ... else default
+            out.append(None if s is None else s.get(field, fb))
         return out
 
     data: dict[str, Any] = {}
@@ -103,6 +152,7 @@ def sim_payload(
             "fill": {d: [seg_series(v, s[d], "fill") for s in segs] for d in DIRS},
             "left": {d: [seg_series(v, s[d], "left_behind") for s in segs] for d in DIRS},
             "ratio": {d: [seg_series(v, s[d], "ratio") for s in segs] for d in DIRS},
+            "trains": {d: [seg_series(v, s[d], "trains", None) for s in segs] for d in DIRS},
             "queues": {
                 d: [[f["queues"].get(st, {}).get(d, 0.0) for f in fr] for st in order] for d in DIRS
             },
@@ -118,6 +168,7 @@ def sim_payload(
     for i, sg in enumerate(segs):
         for d in DIRS:
             where[sg[d]] = (i, d)
+    frame_ts = [frame(tl, "policy", i)["t"] for i in range(n)]
     acts = []
     for ac in actions:
         try:
@@ -130,6 +181,12 @@ def sim_payload(
         else:
             what, target, status = action_row(ac, names)
         seg, d = where.get(str(ac.get("target", "")), (None, None))
+        ks = window_ks(ac, frame_ts)
+        err = ac.get("status") == "source_error"
+        win = ""
+        if ks and not err:
+            lo, hi = _ts(frame_ts[ks[0]]) - timedelta(minutes=15), _ts(frame_ts[ks[-1]])
+            win = f"{to_msk(lo):%H:%M}–{to_msk(hi):%H:%M}"
         acts.append(
             {
                 "k": k,
@@ -143,6 +200,8 @@ def sim_payload(
                 "applied": ac.get("status") == "applied",
                 "error": ac.get("status") == "source_error",
                 "critical": _critical(ac, seg, d, k, data),
+                "ba": None if err else before_after(data, seg, d, ks),
+                "win": win,
             }
         )
     ev = events or {}

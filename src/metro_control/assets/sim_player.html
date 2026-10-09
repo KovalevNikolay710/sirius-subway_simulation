@@ -63,7 +63,7 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 
 /* Actions sequence */
 .acts { max-height: 300px; overflow: auto; margin: 0; padding: 0; list-style: none; position: relative; }
-.acts li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 7px 8px 7px 10px; border-left: 3px solid transparent;
+.acts li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 7px 8px 7px 10px; border-left: 3px solid transparent;
   border-top: 1px solid var(--rule); font-size: 13px; cursor: pointer; transition: background .25s, opacity .25s; }
 .acts li:first-child { border-top: 0; }
 .acts li:hover { background: #F2F6FA; }
@@ -71,6 +71,11 @@ select { font: inherit; color: #fff; background: var(--console-2); border: 1px s
 .acts li.crit { border-left-color: var(--over); }
 .acts li.current { background: #E8F2FB; }
 .acts li.crit, .acts li.crit:hover, .acts li.crit.current, .acts li.crit.future, .acts li.crit.flash { border-left-color: var(--over); }
+.acts .ba { display: none; white-space: normal; overflow-wrap: anywhere; font-size: 12px; color: var(--ink); margin-top: 2px; }
+.acts li:hover .ba, .acts li:focus-visible .ba { display: block; }
+.acts .ba .good { color: var(--good); font-weight: 600; }
+.acts .ba .bad { color: var(--over); font-weight: 600; }
+#strip .sg rect.focus, #strip rect.focus { stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: none; animation: none; }
 .acts li.flash { animation: flash 1.2s ease-out; }
 @keyframes flash { 0% { background: #FFE9C7; } 100% { background: #E8F2FB; } }
 .acts b { font-weight: 600; }
@@ -148,6 +153,7 @@ const P = __PAYLOAD__;
 const N = P.times.length, S = P.segs.length, ST = P.stations.length, DIRS = ["north", "south"];
 const state = { pos: P.first, playing: false, speed: 1, mode: "policy" };
 let dirty = true;
+let focusAct = -1; // decision under the pointer / keyboard focus: highlights its target and window
 
 // ---------- helpers ----------
 const at = (arr, pos) => { const k = Math.floor(pos); return lerp(arr[k], arr[Math.min(k + 1, N - 1)], pos - k); };
@@ -248,6 +254,8 @@ function buildHeat() {
   });
   heatCache = off; G = { pw, cw, x0, dpr };
 }
+function focusBa() { const a = focusAct >= 0 ? P.actions[focusAct] : null; return a && a.ba && a.seg != null ? a : null; }
+function focusRow() { const a = focusBa(); return a ? DIRS.indexOf(a.dir) * S + a.seg : -1; }
 function drawHeat() {
   if (!heatCache) buildHeat(); if (!heatCache) return;
   const cv = $("heat"), g = cv.getContext("2d"), { pw, cw, x0, dpr } = G;
@@ -263,6 +271,12 @@ function drawHeat() {
     g.fillStyle = C.ink; g.textAlign = "right"; g.textBaseline = "middle"; g.font = `${a > 0.5 ? 600 : 400} ${12 + 1.5 * a}px 'Golos Text', system-ui`;
     g.fillText(P.segs[i].label, HL - 8, y + ROW / 2 - 2 * a);
   }
+  const fa = focusBa(), cvEl = $("heat");
+  if (fa) {
+    const j = DIRS.indexOf(fa.dir), left = HL + j * (pw + GAP), ka = Math.max(x0, fa.ba.k0), kb = Math.min(P.last, fa.ba.k1);
+    if (kb >= ka) { g.strokeStyle = C.ink; g.lineWidth = 2; g.strokeRect(left + (ka - x0) * cw, HT + fa.seg * ROW, (kb - ka + 1) * cw, ROW - 2); }
+    cvEl.dataset.focus = `${fa.dir}:${fa.seg}:${fa.ba.k0}-${fa.ba.k1}`;
+  } else delete cvEl.dataset.focus;
   const t = $("clock").textContent, bot = HT + S * ROW - 2;
   DIRS.forEach((d, j) => {
     const left = HL + j * (pw + GAP), x = left + (state.pos - x0 + 0.5) * cw;
@@ -339,7 +353,8 @@ function drawStrip() {
     e.t.textContent = f != null && f > 0.8 ? Math.round(f * 100) + "%" : "";
     e.t.setAttribute("fill", f != null && f > OVER ? "#fff" : C.ink);
     const hit = recent.filter(a => a.seg === i && a.dir === d);
-    e.r.setAttribute("class", hit.length ? "hl" + (hit.some(a => a.critical) ? " crit" : "") : "");
+    const fa = focusBa(), isF = fa && fa.seg === i && fa.dir === d;
+    e.r.setAttribute("class", isF ? "focus" : hit.length ? "hl" + (hit.some(a => a.critical) ? " crit" : "") : "");
     const why = [...new Set([...P.reasons[i][k], ...P.reasons[i + 1][k]])];
     e.ti.textContent = `${P.segs[i].tip}, ${d === "north" ? "на север" : "на юг"}: ` + (f == null ? "нет движения" : `спрос ${Math.round(f * 100)} % вместимости`) + (hit.length ? `. Решение: ${hit[hit.length - 1].what}` : "") + (why.length ? "\n" + why.join("\n") : "");
   }
@@ -393,16 +408,30 @@ function drawKpis() {
 }
 
 // ---------- actions sequence ----------
+function baHtml(a) {
+  const b = a.ba, pc = (x) => x == null ? "–" : Math.round(x * 100) + "\u00A0%", cls = (x, y) => x == null || y == null ? "" : y < x ? "good" : y > x ? "bad" : "";
+  const pair = (u, v, f, unit) => `${u == null ? "–" : f(u)} → <span class="${cls(u, v)}">${v == null ? "–" : f(v)}</span>${unit}`;
+  const parts = [a.win, "спрос/вместимость " + pair(b.peak[0], b.peak[1], pc, "")];
+  if (b.trains) parts.push(`поездов ${b.trains[0]} → ${b.trains[1]}`);
+  parts.push("остались " + pair(b.left[0], b.left[1], (x) => String(x), " чел."));
+  return parts.filter(Boolean).join(" · ");
+}
 function buildActs() {
   const ul = $("acts"); ul.innerHTML = "";
   if (!P.actions.length) { ul.innerHTML = '<li style="display:block;cursor:default" class="st">Политика не принимала решений.</li>'; return; }
   P.actions.forEach((a) => {
     const li = document.createElement("li"); li.tabIndex = 0;
     if (a.critical) li.classList.add("crit"); if (a.error) li.classList.add("err");
-    li.innerHTML = `<span></span><span><b></b> <span class="tg"></span><span class="badge" hidden>снимает перегрузку</span><span class="st"></span></span>`;
+    li.innerHTML = `<span></span><span><b></b> <span class="tg"></span><span class="badge" hidden>снимает перегрузку</span><span class="st"></span><span class="ba"></span></span>`;
     li.children[0].textContent = a.time; li.querySelector("b").textContent = a.what; li.querySelector(".tg").textContent = a.target;
     li.querySelector(".badge").hidden = !a.critical;
     li.querySelector(".st").textContent = a.status + (a.reason ? ": " + a.reason : ""); li.title = a.reason || "";
+    const idx = P.actions.indexOf(a), setF = (v) => { if (focusAct !== v) { focusAct = v; dirty = true; } };
+    if (a.ba) {
+      li.querySelector(".ba").innerHTML = baHtml(a);
+      li.addEventListener("mouseenter", () => setF(idx)); li.addEventListener("mouseleave", () => { if (li !== document.activeElement) setF(-1); });
+      li.addEventListener("focus", () => { if (li.matches(":focus-visible")) setF(idx); }); li.addEventListener("blur", () => setF(-1));
+    }
     const go = () => { setPlaying(false); seek(a.k); };
     li.onclick = go; li.onkeydown = (e) => { if (e.key === "Enter") go(); };
     ul.appendChild(li);
@@ -452,10 +481,10 @@ function loop(ts) {
   const dt = lastTs == null ? 0 : Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
   if (state.playing) { state.pos += dt * state.speed; if (state.pos >= P.last) { state.pos = P.last; setPlaying(false); } dirty = true; }
   let moving = false;
-  for (let i = 0; i < lift.length; i++) { const target = i === hover ? 1 : 0, d = target - lift[i];
+  for (let i = 0; i < lift.length; i++) { const target = i === hover || i === focusRow() ? 1 : 0, d = target - lift[i];
     if (Math.abs(d) > 0.005) { lift[i] += d * Math.min(1, dt * 12); moving = true; } else lift[i] = target; }
   if (dirty || moving) { dirty = false; try { render(); } catch (e) { console.error(e); } }
-  if (follow) { const t0 = actScrollTarget(), ul = $("acts");
+  if (follow && focusAct < 0) { const t0 = actScrollTarget(), ul = $("acts");
     if (t0 != null) { const t = Math.max(0, Math.min(t0, ul.scrollHeight - ul.clientHeight)), df = t - ul.scrollTop;
       if (Math.abs(df) >= 1) ul.scrollTop += Math.sign(df) * Math.min(Math.abs(df), Math.max(1, Math.abs(df) * Math.min(1, dt * 8)));
       else if (df !== 0) ul.scrollTop = t; } }
