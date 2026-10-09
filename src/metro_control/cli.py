@@ -322,6 +322,34 @@ def _team_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _team_mock(args: argparse.Namespace) -> int:
+    import json
+    from datetime import date, datetime
+
+    import polars as pl
+
+    from metro_control.mock import synthetic_entries
+    from metro_control.team_forecast import mock_team_serve
+
+    try:
+        as_of = datetime.fromisoformat(args.as_of)
+        if as_of.tzinfo is None:
+            raise ValueError("--as-of must include a timezone offset")
+        if args.entries:
+            if not Path(args.entries).is_file():
+                raise ValueError(f"entries parquet not found: {args.entries}")
+            entries = pl.read_parquet(args.entries)
+        else:
+            entries = synthetic_entries(date(2026, 9, 1), 28)
+        obj = mock_team_serve(entries, as_of)
+        Path(args.out).write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
+    except (ValueError, OSError, pl.exceptions.PolarsError) as e:
+        print(f"error: {e}".splitlines()[0], file=sys.stderr)
+        return 1
+    print(f"wrote mock team serve file to {args.out} (mock)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="metro-control")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -361,6 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
     tb.add_argument("--entries", default=None)
     tb.add_argument("--forecast-as-of", default=None, help="ISO datetime with offset (tables)")
     tb.set_defaults(func=_team_bundle)
+    tm = sub.add_parser("team-mock", help="write a mock `serve --json` file for the team adapter")
+    tm.add_argument("--as-of", required=True, help="MSK ISO datetime on the hour, with offset")
+    tm.add_argument("--out", required=True)
+    tm.add_argument("--entries", default=None)
+    tm.set_defaults(func=_team_mock)
     cp = sub.add_parser("compare", help="run a scenario day: baseline vs mock policy")
     cp.add_argument(
         "--scenario", required=True, choices=["quiet_weekend", "rail_surge", "snowfall"]

@@ -175,6 +175,18 @@
    "unit": "scenario specs",
    "source": "assumption: demo event, uncalibrated",
    "version": "0.1"
+  },
+  "team_intrahour_split": {
+   "value": "mean station x day_type x hour x quarter share, same share for q10/q50/q90/baseline",
+   "unit": "share",
+   "source": "assumption: split of person 2 hourly quantiles by Deniskish/metro-petersburg@2f0fd0a data/reference/intrahour_profile.csv",
+   "version": "0.1"
+  },
+  "team_forecast_missing_station": {
+   "value": "history percentiles by station x MSK slot x day_type (mock_forecast), model_version no_data",
+   "unit": "fill rule",
+   "source": "assumption: stations absent from person 2 serve output (e.g. tekhnologichesky_institut at 2f0fd0a)",
+   "version": "0.1"
   }
  }
 }
