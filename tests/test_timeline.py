@@ -315,3 +315,75 @@ def test_sim_payload_ratio_series(result):
                 for r1, r2 in zip(rat, fil, strict=True)
                 for a, b in zip(r1, r2, strict=True)
             )
+
+
+def _ba_data(trains_pol=True):
+    def v(r, t, lb):
+        d = {"ratio": {"north": [r]}, "left": {"north": [lb]}, "trains": {"north": [t]}}
+        return d
+
+    pol = v([0.5, 0.86, 0.7, None], [4, 10, 10, None], [0, 0, 0, None])
+    if not trains_pol:
+        del pol["trains"]
+    return {
+        "baseline": v([0.5, 1.12, 0.9, None], [4, 8, 8, None], [0, 340, 0, None]),
+        "policy": pol,
+    }
+
+
+def test_before_after():
+    from metro_control.sim_view import before_after
+
+    ba = before_after(_ba_data(), 0, "north", [1, 2, 3])
+    assert ba == {
+        "k0": 1,
+        "k1": 3,
+        "peak": [1.12, 0.86],
+        "trains": [16, 20],
+        "left": [340, 0],
+    }
+    ba = before_after(_ba_data(False), 0, "north", [1, 2, 3])
+    assert ba["trains"] is None and ba["peak"] == [1.12, 0.86] and ba["left"] == [340, 0]
+    d = _ba_data()
+    d["policy"]["left"] = {"north": [[None] * 4]}
+    assert before_after(d, 0, "north", [1, 2, 3])["left"] == [340, None]
+    assert before_after(_ba_data(), None, "north", [1]) is None
+    assert before_after(_ba_data(), 0, "north", []) is None
+    assert before_after(_ba_data(), 0, "north", [3]) is None
+
+
+def test_window_ks():
+    from metro_control.sim_view import window_ks
+
+    ts = [f"2026-09-30T{17 + i // 4}:{i % 4 * 15:02d}:00Z" for i in range(8)]
+    want = [3, 4, 5, 6]  # 17:45 .. 18:30
+    ac = {"start": "2026-09-30T17:30:00Z", "end": "2026-09-30T18:30:00Z"}
+    assert window_ks(ac, ts) == want
+    assert window_ks({"as_of": "2026-09-30T17:30:00Z"}, ts) == want
+    assert window_ks({"start": "garbage", "as_of": "x"}, ts) == []
+
+
+def test_sim_payload_before_after(result):
+    from metro_control.line import load_line
+    from metro_control.sim_view import sim_payload
+
+    tl = result.timeline
+    names = {s.id: s.name_ru for s in load_line().stations}
+    key = f"{tl.stations[1]}__{tl.stations[0]}"
+    acts = [
+        {"as_of": tl.frames["policy"][20]["t"], "action": a, "target": key, "status": "applied"}
+        for a in ("add_reserve", "remove_train")
+    ]
+    acts.append({"as_of": tl.frames["policy"][3]["t"], "status": "source_error"})
+    p = sim_payload(tl, names, acts, "mock")
+    for v in ("baseline", "policy"):
+        assert all(isinstance(x, int) for row in p["data"][v]["trains"]["south"] for x in row if x)
+    a0, _, err = p["actions"]
+    assert err["ba"] is None and a0["win"]
+    assert a0["ba"] is None or len(a0["ba"]["peak"]) == 2
+
+    # old runs without "trains"
+    old = _heat_tl()
+    p = sim_payload(old, {}, [{"as_of": old.frames["policy"][0]["t"], "target": "A__B"}], "mock")
+    assert all(x is None for r in p["data"]["policy"]["trains"]["south"] for x in r)
+    assert all(a["ba"] is None or a["ba"]["trains"] is None for a in p["actions"])

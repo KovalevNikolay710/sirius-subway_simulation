@@ -59,6 +59,7 @@ def snapshot(state: SimState, params: SimParams, log_from: int, t_utc: datetime)
             k: {
                 "fill": round(v["fill"], 3),
                 "left_behind": round(v["left_behind"], 1),
+                "trains": v["trains"],
                 # demand / capacity, as in the forecast: everyone who wanted to ride this segment
                 # in the interval (carried + left on the platform) over all trains' places
                 "ratio": round((v["load"] + v["left_behind"]) / (v["trains"] * params.capacity), 3),
