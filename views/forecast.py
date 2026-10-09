@@ -148,6 +148,10 @@ def forecast_tab():
             key="s4_station",
         )
         st.session_state["_s4_station"] = sid
+        if fc_pkg is not None and any(
+            r.model_version == "no_data" for r in fc_pkg.payload.rows if r.station_id == sid
+        ):
+            st.caption("Нет данных в прогнозе команды — показана норма по истории")
         if fc_pkg is None and ent_pkg is None:
             st.info("Нет данных для графика (forecast.json и entries.json недоступны).")
         else:

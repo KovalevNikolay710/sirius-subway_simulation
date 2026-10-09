@@ -83,7 +83,10 @@ def _parse_time(v: Any, name: str) -> datetime:
 
 
 def read_forecast(
-    path: Path | str, as_of: datetime | None = None, model_name: str | None = None
+    path: Path | str,
+    as_of: datetime | None = None,
+    model_name: str | None = None,
+    history: pl.DataFrame | None = None,
 ) -> ForecastPackage:
     """Read a forecast file. Table input: optional team columns baseline, is_anomaly,
     model_version, horizon_min; a missing baseline falls back to q50 (placeholder until A1)."""
@@ -91,6 +94,10 @@ def read_forecast(
     suffix = p.suffix.lower()
     try:
         if suffix == ".json":
+            from metro_control import team_forecast
+
+            if team_forecast.is_team_file(p):
+                return team_forecast.read_team_forecast(p, as_of=as_of, history=history).package
             return ForecastPackage.model_validate(_read_json(p))
         if suffix not in (".csv", ".parquet"):
             raise AdapterError(f"{p.name}: unsupported format (use .json, .csv or .parquet)")
@@ -232,9 +239,20 @@ def build_team_bundle(
 ) -> dict[str, SourceStatus]:
     """as_of: moment of the mock packages when neither forecast nor recommendation gives one.
     surge: demo demand factors for the mock load (None = demo default, {} = none)."""
+    from metro_control import team_forecast
+
     as_of_default = as_of
     out = Path(out_dir)
-    fc, st_fc = _try("person2", forecast, lambda p: read_forecast(p, as_of=forecast_as_of))
+    team: list[team_forecast.TeamForecast] = []
+
+    def _read_fc(p: Path) -> ForecastPackage:
+        if team_forecast.is_team_file(p):
+            t = team_forecast.read_team_forecast(p, as_of=forecast_as_of, history=entries)
+            team.append(t)
+            return t.package
+        return read_forecast(p, as_of=forecast_as_of)
+
+    fc, st_fc = _try("person2", forecast, _read_fc)
     rec, st_rec = _try("person4", recommendation, read_recommendation)
     if fc is not None:
         as_of = fc.payload.as_of
@@ -268,9 +286,25 @@ def build_team_bundle(
                 {**env, "payload": ld.model_dump(mode="json")["payload"]}
             )
             _dump(out / "forecast.json", fc.model_dump(mode="json"))
+            if team:
+                t = team[0]
+                if t.context is not None:
+                    _dump(out / "team_context.json", {**t.context, "no_data": t.no_data})
+                if t.no_data:
+                    nm = {s.id: s.name_ru for s in line.stations}
+                    st_fc = SourceStatus(
+                        "person2",
+                        "ok",
+                        "нет данных: "
+                        + ", ".join(nm[i] for i in t.no_data)
+                        + " — подставлена норма по истории",
+                        str(forecast),
+                    )
             _dump(out / "load.json", ld.model_dump(mode="json"))
     if rec is not None:
         _dump(out / "recommendation.json", rec.model_dump(mode="json"))
+    if st_fc.origin != "person2" or not team or team[0].context is None:
+        (out / "team_context.json").unlink(missing_ok=True)
     stale = out / "explanation.txt"
     if stale.exists():
         stale.unlink()

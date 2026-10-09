@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 
 import polars as pl
 
-from metro_control import mock
+from metro_control import mock, team_forecast
 from metro_control.adapters import AdapterError, build_team_bundle, read_recommendation
 from metro_control.entries import load_holidays, load_workbooks
 from metro_control.line import load_line
@@ -64,7 +64,11 @@ def classify(name: str) -> str:
         return "entries"
     if base in SIM_FILES:
         return "sim"
-    if low.startswith("forecast") and suf in (".json", ".csv", ".parquet"):
+    if low.startswith(("forecast", "serve", "stub", "team_forecast")) and suf in (
+        ".json",
+        ".csv",
+        ".parquet",
+    ):
         return "forecast"
     if low.startswith("recommendation") and suf in (".json", ".jsonl"):
         return "recommendation"
@@ -91,6 +95,13 @@ def expand(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
                 continue
             out.append((info.filename, z.read(info)))
     return out
+
+
+def _sniff_team(data: bytes) -> bool:
+    try:
+        return team_forecast.is_team_data(json.loads(data.decode("utf-8")))
+    except ValueError:
+        return False
 
 
 def _safe(name: str) -> str:
@@ -127,6 +138,8 @@ def ingest(
     by_kind: dict[str, list[tuple[str, Path]]] = {k: [] for k in KINDS}
     for name, data in expand(files):
         kind = kinds.get(name) or classify(name)
+        if kind == "other" and name.lower().endswith(".json") and _sniff_team(data):
+            kind = "forecast"
         if kind not in by_kind:
             rep.add(name, "info", "не используется приложением")
             continue
@@ -184,6 +197,8 @@ def _bundle(
     by_kind: dict, entries: pl.DataFrame, run_dir: Path, rep: IngestReport, as_of: datetime | None
 ) -> None:
     fc = by_kind["forecast"][0][1] if by_kind["forecast"] else None
+    if fc is not None and team_forecast.is_team_file(fc):
+        rep.add(by_kind["forecast"][0][0], "info", "прогноз команды (serve --json)")
     for n, _ in by_kind["forecast"][1:]:
         rep.add(n, "warning", "лишний прогноз: используется первый файл")
     recs = _read_recs(by_kind["recommendation"], rep)
@@ -209,6 +224,8 @@ def _bundle(
     names = {"forecast": "прогноз", "recommendation": "рекомендация", "explanation": "объяснение"}
     for key, st in statuses.items():
         level = {"ok": "ok", "missing": "info", "error": "error"}.get(st.status, "info")
+        if st.status == "ok" and st.reason:
+            level = "warning"
         text = st.reason or (
             "загружено" if st.status == "ok" else "не загружено: используется mock"
         )
