@@ -5,7 +5,6 @@ Time is float minutes. All parameters are explicit arguments.
 
 from __future__ import annotations
 
-import copy
 import heapq
 from collections import deque
 from collections.abc import Sequence
@@ -22,6 +21,7 @@ class SimParams:
     dwell_min: float
     turnback_min: float
     capacity: float
+    _idx: dict[str, int] = field(init=False, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         if len(self.stations) < 2 or len(set(self.stations)) != len(self.stations):
@@ -36,6 +36,7 @@ class SimParams:
             raise ValueError("turnback_min: must be >= 0")
         if self.capacity <= 0:
             raise ValueError("capacity: must be > 0")
+        object.__setattr__(self, "_idx", {s: i for i, s in enumerate(self.stations)})
 
 
 @dataclass(frozen=True)
@@ -97,8 +98,13 @@ class SimState:
     log: list[StopLog]
 
 
+def _station_idx(params: SimParams) -> dict[str, int]:
+    return params._idx
+
+
 def _direction(params: SimParams, a: Arrival) -> str:
-    return NORTH if params.stations.index(a.dest) > params.stations.index(a.origin) else SOUTH
+    idx = _station_idx(params)
+    return NORTH if idx[a.dest] > idx[a.origin] else SOUTH
 
 
 def new_state(
@@ -149,8 +155,9 @@ def new_state(
 
 
 def _apply_arrival(state: SimState, params: SimParams, a: Arrival) -> None:
+    idx = _station_idx(params)
     for s in (a.origin, a.dest):
-        if s not in params.stations:
+        if s not in idx:
             raise ValueError(f"station: unknown {s}")
     q = state.queues[(a.origin, _direction(params, a))]
     if q and q[-1].t_arrive == a.t:
@@ -215,12 +222,7 @@ def _process_stop(state: SimState, params: SimParams, ev: tuple[float, int, str,
 def run(state: SimState, params: SimParams, demand: Sequence[Arrival], until: float) -> SimState:
     if until < state.t:
         raise ValueError("until: before state.t")
-    log = list(state.log)
-    shallow = copy.copy(state)
-    shallow.log = []
-    st = copy.deepcopy(shallow)
-    st.log = log
-    st.queues = {k: deque(v) for k, v in st.queues.items()}
+    st = _copy_state(state)
     arrivals = sorted((a for a in demand if st.t <= a.t < until), key=lambda a: a.t)
     i = 0
     while True:
@@ -258,12 +260,32 @@ def _origin_idx(params: SimParams, direction: str) -> int:
 
 
 def _copy_state(state: SimState) -> SimState:
-    log = list(state.log)
-    shallow = copy.copy(state)
-    shallow.log = []
-    st = copy.deepcopy(shallow)
-    st.log = log
-    return st
+    """Independent copy (StopLog is frozen, so log entries are shared)."""
+    return SimState(
+        t=state.t,
+        trains={
+            k: Train(
+                tr.train_id,
+                tr.station_idx,
+                tr.direction,
+                dict(tr.onboard),
+                tr.in_service,
+                tr.one_way,
+            )
+            for k, tr in state.trains.items()
+        },
+        queues={
+            k: deque(Cohort(c.t_arrive, dict(c.by_dest)) for c in q)
+            for k, q in state.queues.items()
+        },
+        events=list(state.events),
+        seq=state.seq,
+        entered=state.entered,
+        alighted=state.alighted,
+        denied=state.denied,
+        wait_pax_min=state.wait_pax_min,
+        log=list(state.log),
+    )
 
 
 def add_trip(
