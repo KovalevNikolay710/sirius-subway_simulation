@@ -22,3 +22,7 @@ runs/*
 # Case documents from organizers/team (kept locally, not in the repo)
 docs/*.pdf
 docs/*.docx
+
+# Secrets (YandexGPT key etc.) — local only
+.env
+.env.*

@@ -38,3 +38,9 @@ Read this instead of opening the Excel files. Raw files: `data/raw/Данные 
 - `3.Характеристики состава и Линии/Пример остановки…docx` — incident 31.08.2026 (Chernyshevskaya): turnbacks at Vosstaniya/Lenina,
   vestibule closures and entry limits at Devyatkino, Grazhdansky, Muzhestva. Example of the "capacity limit" action.
 - `Диаграмма пассажиропотока (пример)` — 10-min entry charts as images only; no extra numbers.
+
+## 5. Team forecast output (person 2, Deniskish/metro-petersburg `src/serve.py --json`, checked 2026-10-09 at main 326a770)
+- Default model «stack» (`--model stack`): 30-min slots; `now` is rounded up to t on :00/:30 MSK; records `ts` = t, t+30, t+60, t+90 with `horizon_min` 30/60/90/120; 18 stations (no Технологический институт); `meta.model == "stack"`, `meta.base_models[].weights`.
+- No stack for that moment (no 15-min data: only Feb/May/Jul/Sep; night; unusual days) → hourly LightGBM, `meta.fallback = {from: "stack", reason}`, `meta.requested_model = "stack"`; horizons 60/120, `ts` on the hour (our A1 format). `--model lgbm` forces it.
+- Row schema unchanged: `data/predictions/contract.schema.json` (`horizon_min` 15–120, multiple of 15; `ts` = MSK-offset ISO).
+- The team says all 3 models' outputs will be in their `data/`; on 2026-10-09 it holds only `data/predictions/stub.json` + schema.
