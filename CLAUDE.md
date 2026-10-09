@@ -34,6 +34,9 @@ Team brief and case: `docs/team_notes.md`, `docs/ТЗ_*.pdf`, `docs/План_ч�
   `feature/<slug>` for tooling/harness, `fix/<slug>` for bug fixes. Never commit directly to `dev` or `master`.
 - Finish a branch: tests + ruff green on the branch → `git switch dev && git merge --no-ff <branch>` → tests green on `dev` → `git branch -d <branch>` → `git push origin dev`.
 - Commit messages: conventional (`feat(scope): …`, `fix: …`, `chore: …`, `docs: …`); merge commits `merge: <branch purpose>`.
+- Team repo: Deniskish/metro-petersburg, our code lives in `dispatcher/` on their branch `dispatcher` (clone `/root/sirius/metro-petersburg`).
+  After a merge to `dev`: `cd /root/sirius/metro-petersburg && git switch dispatcher && git subtree pull --prefix=dispatcher /root/sirius/metro dev -m "merge: sync dispatcher"`.
+  The user pushes `dispatcher` and opens PRs; never touch their `main` or tags.
 - Unattended slice runs: `scripts/slice_loop.sh` (fresh headless session per slice; own pytest + ruff gate, auto commit + merge + push `dev`;
   stops and notifies on a red gate, a `NEEDS_USER:` question or an unclean merge; `SLICE_CONFIRM=1` brings back the y/n prompt).
   One loop per repo (lock in `.git/slice_loop.lock`): a second start exits with code 3. Gate command: `SLICE_GATE_CMD`.
